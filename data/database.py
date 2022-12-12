@@ -7,6 +7,7 @@ from data.sql.queries import QUERY_CLIN_DEMOG_SCALE
 
 
 class DatabaseConnectionInfo(NamedTuple):
+    """Structure containing all the information necessary to connect to a database."""
     user: str
     password: str
     host: str
