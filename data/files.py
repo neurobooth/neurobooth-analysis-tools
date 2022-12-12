@@ -53,8 +53,15 @@ def parse_files(subj_dir: str) -> List[FileMetadata]:
     """Parse the file names present within a Neurobooth session directory."""
     metadata = []
     for f in os.listdir(subj_dir):
-        if os.path.isfile(f) and (re.fullmatch(NOTE_FILE_PATTERN, f) is None) and (not is_csv(f)) and (not is_xdf(f)):
-            metadata.append(parse_file(subj_dir, f))
+        if not os.path.isfile(f):
+            continue
+        if re.fullmatch(NOTE_FILE_PATTERN, f) is not None:  # Do not handle notes at the moment
+            continue
+        if is_csv(f) or is_xdf(f):  # Do not handle csv or xdf files at the moment
+            continue
+        if '_jittered' in f:  # Jitter files should be ignored
+            continue
+        metadata.append(parse_file(subj_dir, f))
     return metadata
 
 
