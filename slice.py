@@ -2,7 +2,7 @@
 
 """
 Script to create a slice of Neurobooth data at the specified location.
-The slice can be specified based on date ranges, data types, and tasks.
+The slice can be specified based on date ranges, devices, and tasks.
 Because of storage concerns, video data is not currently supported as part of a slice.
 """
 
@@ -14,13 +14,18 @@ from importlib import resources
 from typing import List
 
 import data
-from data.files import discover_session_directories, parse_files
+from data.files import discover_session_directories, parse_files, FileMetadata
 from data.types import NeuroboothDevice
 
 
 def main() -> None:
     args = parse_arguments()
+    file_metadata = get_matching_files(args)
+    # TODO: Perform sync
 
+
+def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
+    """Create a list of metadata objects for data files that match conditions specified on the command line."""
     metadata = []
     _, session_dirs = discover_session_directories(args.source)
     for d in session_dirs:
@@ -37,13 +42,26 @@ def main() -> None:
     metadata = filter(lambda m: m.device in args.devices, metadata)
     # TODO: Implement task-based filters
 
-    # TODO: Perform sync
-    metadata = list(metadata)  # Resolve filters
+    return list(metadata)  # Resolve filters
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a slice of Neurobooth data.")
+    parser = configure_parser()
+    args = parser.parse_args()
+    validate_arguments(parser, args)
+    return args
 
+
+def configure_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Create a slice of Neurobooth data.")
+    add_directory_group(parser)
+    add_filter_group(parser)
+    add_device_group(parser)
+    add_task_group(parser)
+    return parser
+
+
+def add_directory_group(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group(title='Data Directories')
     group.add_argument(
         '--dest',
@@ -59,7 +77,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Overwrite source directory defaults. Specify multiple times for multiple source directories."
     )
 
-    group = parser.add_argument_group(title='Filters')
+
+def add_filter_group(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group(
+        title='General Filters',
+        description='Only data files satisfying the filter conditions will be included in the slice.'
+    )
     group.add_argument(
         '--start-date',
         type=datetime.date.fromisoformat,
@@ -86,6 +109,8 @@ def parse_arguments() -> argparse.Namespace:
         help="Exclude files with the given extension (including the .). Can specify multiple times."
     )
 
+
+def add_device_group(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group(
         title='Device Flags',
         description='At least one device must be specified. Video devices currently not supported.'
@@ -140,9 +165,13 @@ def parse_arguments() -> argparse.Namespace:
         help='Mouse Position'
     )
 
-    args = parser.parse_args()
-    validate_arguments(parser, args)
-    return args
+
+def add_task_group(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group(
+        title='Task Flags',
+        description='Specify a task flag to only include the specified tasks in the slice. Multiple flags can be set.'
+    )
+    # TODO: Add flags similarly to how the device flags function
 
 
 def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

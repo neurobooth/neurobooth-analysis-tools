@@ -46,6 +46,7 @@ class FileMetadata(NamedTuple):
     datetime: datetime
     task: NeuroboothTask
     device: NeuroboothDevice
+    device_info: str
     extension: str
 
 
@@ -53,7 +54,7 @@ def parse_files(subj_dir: str) -> List[FileMetadata]:
     """Parse the file names present within a Neurobooth session directory."""
     metadata = []
     for f in os.listdir(subj_dir):
-        if not os.path.isfile(f):
+        if not os.path.isfile(os.path.join(subj_dir, f)):
             continue
         if re.fullmatch(NOTE_FILE_PATTERN, f) is not None:  # Do not handle notes at the moment
             continue
@@ -69,8 +70,8 @@ def parse_file(subj_dir: str, file_name: str) -> FileMetadata:
     """Parse the information from a single Neurobooth data file name"""
     match = re.fullmatch(DATA_FILE_PATTERN, file_name)
     subj_id = match.group(1)
-    day, month, year = match.group(2), match.group(3), match.group(4)
-    hour, minute, second = match.group(5), match.group(6), match.group(7)
+    year, month, day = int(match.group(2)), int(match.group(3)), int(match.group(4))
+    hour, minute, second = int(match.group(5)), int(match.group(6)), int(match.group(7))
     dt = datetime(year, month, day, hour, minute, second)
     task_device_str = match.group(8)
     ext = match.group(9).lower()
@@ -80,7 +81,9 @@ def parse_file(subj_dir: str, file_name: str) -> FileMetadata:
     if match is None:
         raise FilenameException(f"No matching task definition found for {file_name}.")
     task = NeuroboothTask(match.group(1))
-    device = file_str_to_device_enum(match.group(2), file_name)
+    device_str = match.group(2)
+    device = file_str_to_device_enum(device_str, file_name)
+    device_info = parse_device_info(device, device_str, file_name)
 
     return FileMetadata(
         session_dir=subj_dir,
@@ -89,6 +92,7 @@ def parse_file(subj_dir: str, file_name: str) -> FileMetadata:
         datetime=dt,
         task=task,
         device=device,
+        device_info=device_info,
         extension=ext,
     )
 
@@ -115,6 +119,43 @@ def file_str_to_device_enum(device_str: str, file_name: str) -> NeuroboothDevice
         return NeuroboothDevice.Mouse
     else:
         raise FilenameException(f"Unable to parse device from {file_name}.")
+
+
+def parse_device_info(device: NeuroboothDevice, device_str: str, file_name: str) -> str:
+    """Parse supplementary device information from the data file name."""
+    if device == NeuroboothDevice.RealSense and is_bag(file_name):
+        if 'intel1' in device_str:
+            return 'RealSense 1'
+        elif 'intel2' in device_str:
+            return 'RealSense 2'
+        elif 'intel3' in device_str:
+            return 'RealSense 3'
+        else:
+            raise FilenameException(f"Unable to parse supplemental device information from {file_name}.")
+    elif device == NeuroboothDevice.RealSense and is_hdf5(file_name):
+        if 'Intel_D455_1' in device_str:
+            return 'RealSense 1'
+        elif 'Intel_D455_2' in device_str:
+            return 'RealSense 2'
+        elif 'Intel_D455_3' in device_str:
+            return 'RealSense 3'
+        else:
+            raise FilenameException(f"Unable to parse supplemental device information from {file_name}.")
+    elif device == NeuroboothDevice.Mbient:
+        if '_BK_' in device_str:
+            return 'Back'
+        elif '_LF_' in device_str:
+            return 'Left Foot'
+        elif '_RF_' in device_str:
+            return 'Right Foot'
+        elif '_LH_' in device_str:
+            return 'Left Hand'
+        elif '_RH_' in device_str:
+            return 'Right Hand'
+        else:
+            raise FilenameException(f"Unable to parse supplemental device information from {file_name}.")
+    else:
+        return ''
 
 
 def has_extension(file: str, extension: str) -> bool:
