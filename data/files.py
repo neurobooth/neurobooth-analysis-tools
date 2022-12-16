@@ -40,7 +40,7 @@ def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[
 
 
 class FileMetadata(NamedTuple):
-    session_dir: str
+    session_path: str
     file_name: str
     subject_id: str
     datetime: datetime
@@ -50,11 +50,11 @@ class FileMetadata(NamedTuple):
     extension: str
 
 
-def parse_files(subj_dir: str) -> List[FileMetadata]:
+def parse_files(session_path: str) -> List[FileMetadata]:
     """Parse the file names present within a Neurobooth session directory."""
     metadata = []
-    for f in os.listdir(subj_dir):
-        if not os.path.isfile(os.path.join(subj_dir, f)):
+    for f in os.listdir(session_path):
+        if not os.path.isfile(os.path.join(session_path, f)):
             continue
         if re.fullmatch(NOTE_FILE_PATTERN, f) is not None:  # Do not handle notes at the moment
             continue
@@ -62,31 +62,31 @@ def parse_files(subj_dir: str) -> List[FileMetadata]:
             continue
         if '_jittered' in f:  # Jitter files should be ignored
             continue
-        metadata.append(parse_file(subj_dir, f))
+        metadata.append(parse_file(session_path, f))
     return metadata
 
 
-def parse_file(subj_dir: str, file_name: str) -> FileMetadata:
+def parse_file(session_path: str, file_name: str) -> FileMetadata:
     """Parse the information from a single Neurobooth data file name"""
     match = re.fullmatch(DATA_FILE_PATTERN, file_name)
-    subj_id = match.group(1)
-    year, month, day = int(match.group(2)), int(match.group(3)), int(match.group(4))
-    hour, minute, second = int(match.group(5)), int(match.group(6)), int(match.group(7))
+    subj_id = match[1]
+    year, month, day = int(match[2]), int(match[3]), int(match[4])
+    hour, minute, second = int(match[5]), int(match[6]), int(match[7])
     dt = datetime(year, month, day, hour, minute, second)
-    task_device_str = match.group(8)
-    ext = match.group(9).lower()
+    task_device_str = match[8]
+    ext = match[9].lower()
 
     # Tease apart the task and device, which does not have a clear delimiter
     match = re.fullmatch(TASK_DEVICE_PATTEN, task_device_str)
     if match is None:
         raise FilenameException(f"No matching task definition found for {file_name}.")
-    task = NeuroboothTask(match.group(1))
-    device_str = match.group(2)
+    task = NeuroboothTask(match[1])
+    device_str = match[2]
     device = file_str_to_device_enum(device_str, file_name)
     device_info = parse_device_info(device, device_str, file_name)
 
     return FileMetadata(
-        session_dir=subj_dir,
+        session_path=session_path,
         file_name=file_name,
         subject_id=subj_id,
         datetime=dt,
@@ -160,12 +160,12 @@ def parse_device_info(device: NeuroboothDevice, device_str: str, file_name: str)
 
 def has_extension(file: str, extension: str) -> bool:
     _, ext = os.path.splitext(file)
-    return ext == extension
+    return ext.lower() == extension.lower()
 
 
 # Aliases for convenient file type checks
 is_hdf5 = partial(has_extension, extension='.hdf5')
-is_edf = partial(has_extension, extension='.util')
+is_edf = partial(has_extension, extension='.edf')
 is_asc = partial(has_extension, extension='.asc')
 is_bag = partial(has_extension, extension='.bag')
 is_avi = partial(has_extension, extension='.avi')

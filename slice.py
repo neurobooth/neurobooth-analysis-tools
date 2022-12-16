@@ -12,16 +12,19 @@ import argparse
 import datetime
 from importlib import resources
 from typing import List
+from tqdm import tqdm
+import sysrsync
 
 import data
 from data.files import discover_session_directories, parse_files, FileMetadata
-from data.types import NeuroboothDevice
+from data.types import NeuroboothDevice, NeuroboothTask
 
 
 def main() -> None:
     args = parse_arguments()
     file_metadata = get_matching_files(args)
-    # TODO: Perform sync
+    create_directories(args, file_metadata)
+    copy_files(args, file_metadata)
 
 
 def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
@@ -33,16 +36,32 @@ def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
 
     if args.hdf5_only:
         metadata = filter(lambda m: m.extension == '.hdf5', metadata)
-
-    if args.exclude:
+    elif args.exclude:
         metadata = filter(lambda m: m.extension not in args.exclude, metadata)
 
     metadata = filter(lambda m: m.datetime >= args.start_date, metadata)
     metadata = filter(lambda m: m.datetime <= args.end_date, metadata)
     metadata = filter(lambda m: m.device in args.devices, metadata)
-    # TODO: Implement task-based filters
+    metadata = filter(lambda m: m.task in args.tasks, metadata)
 
     return list(metadata)  # Resolve filters
+
+
+def create_directories(args: argparse.Namespace, metadata: List[FileMetadata]) -> None:
+    session_dirs = {os.path.basename(m.session_path) for m in metadata}
+    file_mode = os.stat(args.dest).st_mode
+    for d in session_dirs:
+        dest_path = os.path.join(args.dest, d)
+        if os.path.exists(dest_path):
+            continue
+        os.mkdir(dest_path, mode=file_mode)
+
+
+def copy_files(args: argparse.Namespace, metadata: List[FileMetadata]) -> None:
+    for m in tqdm(metadata, desc="Syncing Files", unit="files"):
+        src = os.path.join(m.session_path, m.file_name)
+        dest = os.path.join(args.dest, os.path.basename(m.session_path), m.file_name)
+        sysrsync.run(source=src, destination=dest)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -61,8 +80,49 @@ def configure_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Perform input validation checks on command line arguments."""
+    # Check that the destination directory is valid
+    args.dest = os.path.abspath(args.dest)
+    check_valid_directory(parser, args.dest)
+
+    # Load default source directories if necessary, then check that each source directory is valid.
+    if args.source is None:
+        args.source = load_default_source_directories()
+    else:
+        args.source = [os.path.abspath(d) for d in args.source]
+    for d in args.source:
+        check_valid_directory(parser, d)
+
+    # Check that each extension exclusion starts with .
+    for e in args.exclude:
+        if not e.startswith('.'):
+            raise parser.error(f"{e} is not a valid file extension. Did you forget the leading .?")
+
+    # Force exclusion of .bag, .avi, and .xdf
+    args.exclude.extend(['.bag', '.avi', '.xdf'])
+
+    # Check that at least one device was specified
+    if args.devices is None:
+        raise parser.error(f"Must specify at least one device flag.")
+
+    # Default to all tasks if no flag is specified
+    if args.tasks is None:
+        args.tasks = [t for t in NeuroboothTask]
+
+
+def load_default_source_directories() -> List[str]:
+    lines = resources.read_text(data, 'default_source_directories.txt').strip().splitlines(keepends=False)
+    return [os.path.abspath(line) for line in lines]
+
+
+def check_valid_directory(parser: argparse.ArgumentParser, directory: str) -> None:
+    if not os.path.isdir(directory):
+        parser.error(f"{directory} is not a valid directory.")
+
+
 def add_directory_group(parser: argparse.ArgumentParser) -> None:
-    group = parser.add_argument_group(title='Data Directories')
+    group = parser.add_argument_group(title="Data Directories")
     group.add_argument(
         '--dest',
         type=str,
@@ -80,8 +140,8 @@ def add_directory_group(parser: argparse.ArgumentParser) -> None:
 
 def add_filter_group(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group(
-        title='General Filters',
-        description='Only data files satisfying the filter conditions will be included in the slice.'
+        title="General Filters",
+        description="Only data files satisfying the filter conditions will be included in the slice."
     )
     group.add_argument(
         '--start-date',
@@ -111,58 +171,62 @@ def add_filter_group(parser: argparse.ArgumentParser) -> None:
 
 
 def add_device_group(parser: argparse.ArgumentParser) -> None:
+    group_description = (
+        "At least one device must be specified.\n"
+        "Large movie files (.bag, .avi) and .xdf files are currently excluded from the slice."
+    )
     group = parser.add_argument_group(
-        title='Device Flags',
-        description='At least one device must be specified. Video devices currently not supported.'
+        title="Device Flags",
+        description=group_description
     )
     group.add_argument(
         '--real-sense',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.RealSense,
-        help='Intel RealSense Video (Not supported)'
+        help="Intel RealSense Video (.bag files are excluded)"
     )
     group.add_argument(
         '--iphone',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.IPhone,
-        help='IPhone Video/Audio (Not supported)'
+        help="IPhone Video+Audio"
     )
     group.add_argument(
         '--flir',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.FLIR,
-        help='FLIR Camera Video (Not supported)'
+        help="FLIR Camera Video (.avi files are excluded)"
     )
     group.add_argument(
         '--eyelink',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.EyeLink,
-        help='EyeLink Gaze Data'
+        help="EyeLink Gaze Data"
     )
     group.add_argument(
         '--yeti',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.Yeti,
-        help='Yeti Mic Audio'
+        help="Yeti Mic Audio"
     )
     group.add_argument(
         '--mbient',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.Mbient,
-        help='Mbient Inertial Data'
+        help="Mbient Inertial Data"
     )
     group.add_argument(
         '--mouse',
         dest='devices',
         action='append_const',
         const=NeuroboothDevice.Mouse,
-        help='Mouse Position'
+        help="Mouse Position"
     )
 
 
@@ -171,47 +235,139 @@ def add_task_group(parser: argparse.ArgumentParser) -> None:
         title='Task Flags',
         description='Specify a task flag to only include the specified tasks in the slice. Multiple flags can be set.'
     )
-    # TODO: Add flags similarly to how the device flags function
-
-
-def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    """Perform input validation checks on command line arguments."""
-    # Check that the destination directory is valid
-    args.dest = os.path.abspath(args.dest)
-    check_valid_directory(parser, args.dest)
-
-    # Load default source directories if necessary, then check that each source directory is valid.
-    if args.source is None:
-        args.source = load_default_source_directories()
-    else:
-        args.source = [os.path.abspath(d) for d in args.source]
-    for d in args.source:
-        check_valid_directory(parser, d)
-
-    # Check that each extension exclusion starts with .
-    for e in args.exclude:
-        if not e.startswith('.'):
-            raise parser.error(f"{e} is not a valid file extension. Did you forget the leading .?")
-
-    # Check that at least one device was specified
-    if args.devices is None:
-        raise parser.error(f"Must specify at least one device flag.")
-
-    # Check that video is not included in the slice
-    unsupported_devices = [NeuroboothDevice.FLIR, NeuroboothDevice.RealSense, NeuroboothDevice.IPhone]
-    for d in args.devices:
-        if d in unsupported_devices:
-            raise parser.error(f"Unsupported Device: {d.name}. File sizes are too large for video slices.")
-
-
-def load_default_source_directories() -> List[str]:
-    lines = resources.read_text(data, 'default_source_directories.txt').strip().splitlines(keepends=False)
-    return [os.path.abspath(line) for line in lines]
-
-
-def check_valid_directory(parser: argparse.ArgumentParser, directory: str) -> None:
-    if not os.path.isdir(directory):
-        parser.error(f"{directory} is not a valid directory.")
+    group.add_argument(
+        '--lalala',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.LaLaLa,
+        help='Repetitive "La" syllables'
+    )
+    group.add_argument(
+        '--mememe',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.MeMeMe,
+        help='Repetitive "Me" syllables'
+    )
+    group.add_argument(
+        '--gogogo',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.GoGoGo,
+        help='Repetitive "Go" syllables'
+    )
+    group.add_argument(
+        '--pataka',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.PaTaKa,
+        help='Repetitive "Pa-Ta-Ka" syllables'
+    )
+    group.add_argument(
+        '--passage-reading',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.PassageReading,
+        help='Reading a prepared passage'
+    )
+    group.add_argument(
+        '--DSC',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.DSC,
+        help='Digit Symbol Substitution Test'
+    )
+    group.add_argument(
+        '--MOT',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.MOT,
+        help='Multiple Object Tracking'
+    )
+    group.add_argument(
+        '--hevelius',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.Hevelius,
+        help='Hevelius computer mouse task'
+    )
+    group.add_argument(
+        '--calibration',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.Calibration,
+        help='System calibration'
+    )
+    group.add_argument(
+        '--fixation-no-target',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.FixationNoTarget,
+        help='Fixation on screen with no target'
+    )
+    group.add_argument(
+        '--gaze-holding',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.GazeHolding,
+        help='Fixation on screen target'
+    )
+    group.add_argument(
+        '--vert-saccades',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.SaccadesVert,
+        help='Vertical saccades'
+    )
+    group.add_argument(
+        '--horiz-saccades',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.SaccadesHoriz,
+        help='Horizontal Saccades'
+    )
+    group.add_argument(
+        '--smooth-pursuit',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.SmoothPursuit,
+        help='Smooth pursuit'
+    )
+    group.add_argument(
+        '--finger-nose',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.FingerNose,
+        help='Finger-to-nose'
+    )
+    group.add_argument(
+        '--foot-tapping',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.FootTapping,
+        help='Foot tapping'
+    )
+    group.add_argument(
+        '--alt-hand-mvmt',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.AltHandMvmt,
+        help='Alternating hand movements'
+    )
+    group.add_argument(
+        '--sit2stand',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.SitToStand,
+        help='Sit-to-stand'
+    )
+    group.add_argument(
+        '--timing-test',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.TimingTest,
+        help='Hardware test for device timing/synchronization'
+    )
 
 
 if __name__ == '__main__':
