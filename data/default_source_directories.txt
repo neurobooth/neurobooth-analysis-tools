@@ -1,2 +1,2 @@
-/space/drwho/3/neurobooth/bro_test
-/space/neo/3/neurobooth/bro_test
+/space/drwho/3/neurobooth/data
+/space/neo/3/neurobooth/data

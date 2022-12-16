@@ -12,7 +12,8 @@ import argparse
 import datetime
 from importlib import resources
 from typing import List
-from tqdm import tqdm
+from functools import partial
+from tqdm.contrib.concurrent import process_map
 import sysrsync
 
 import data
@@ -39,8 +40,8 @@ def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
     elif args.exclude:
         metadata = filter(lambda m: m.extension not in args.exclude, metadata)
 
-    metadata = filter(lambda m: m.datetime >= args.start_date, metadata)
-    metadata = filter(lambda m: m.datetime <= args.end_date, metadata)
+    metadata = filter(lambda m: m.datetime.date() >= args.start_date, metadata)
+    metadata = filter(lambda m: m.datetime.date() <= args.end_date, metadata)
     metadata = filter(lambda m: m.device in args.devices, metadata)
     metadata = filter(lambda m: m.task in args.tasks, metadata)
 
@@ -58,10 +59,14 @@ def create_directories(args: argparse.Namespace, metadata: List[FileMetadata]) -
 
 
 def copy_files(args: argparse.Namespace, metadata: List[FileMetadata]) -> None:
-    for m in tqdm(metadata, desc="Syncing Files", unit="files"):
-        src = os.path.join(m.session_path, m.file_name)
-        dest = os.path.join(args.dest, os.path.basename(m.session_path), m.file_name)
-        sysrsync.run(source=src, destination=dest)
+    _copy_file = partial(copy_file, dest=args.dest)
+    process_map(_copy_file, metadata, desc="Syncing Files", unit="files", chunksize=1)
+
+
+def copy_file(m: FileMetadata, dest: str) -> None:
+    src = os.path.join(m.session_path, m.file_name)
+    dest = os.path.join(dest, os.path.basename(m.session_path), m.file_name)
+    sysrsync.run(source=src, destination=dest)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -72,7 +77,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def configure_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Create a slice of Neurobooth data.")
+    parser = argparse.ArgumentParser(description="Create (or update) a slice of Neurobooth data.")
     add_directory_group(parser)
     add_filter_group(parser)
     add_device_group(parser)
