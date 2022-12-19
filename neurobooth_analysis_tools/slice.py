@@ -1,5 +1,3 @@
-#! /usr/bin/env python
-
 """
 Script to create a slice of Neurobooth data at the specified location.
 The slice can be specified based on date ranges, devices, and tasks.
@@ -16,9 +14,9 @@ from functools import partial
 from tqdm.contrib.concurrent import process_map
 import sysrsync
 
-import data
-from data.files import discover_session_directories, parse_files, FileMetadata
-from data.types import NeuroboothDevice, NeuroboothTask
+from neurobooth_analysis_tools import data
+from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, FileMetadata
+from neurobooth_analysis_tools.data.types import NeuroboothDevice, NeuroboothTask
 
 
 def main() -> None:

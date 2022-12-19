@@ -3,7 +3,7 @@ import numpy as np
 from sqlalchemy import create_engine
 from typing import NamedTuple
 
-from data.sql.queries import QUERY_CLIN_DEMOG_SCALE
+from neurobooth_analysis_tools.data.sql.queries import QUERY_CLIN_DEMOG_SCALE
 
 
 class DatabaseConnectionInfo(NamedTuple):

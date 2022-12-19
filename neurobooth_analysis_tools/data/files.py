@@ -4,7 +4,7 @@ from functools import partial
 from typing import NamedTuple, Tuple, List
 from datetime import datetime
 
-from data.types import NeuroboothTask, NeuroboothDevice
+from neurobooth_analysis_tools.data.types import NeuroboothTask, NeuroboothDevice
 
 # Regex patterns
 SUBJECT_YYYY_MM_DD = re.compile(r'(\d+)_(\d\d\d\d)[_-](\d\d)[_-](\d\d).*')
