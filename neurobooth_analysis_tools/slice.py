@@ -11,6 +11,7 @@ import datetime
 from importlib import resources
 from typing import List
 from functools import partial
+from itertools import chain
 from tqdm.contrib.concurrent import process_map
 import sysrsync
 
@@ -28,10 +29,9 @@ def main() -> None:
 
 def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
     """Create a list of metadata objects for data files that match conditions specified on the command line."""
-    metadata = []
     _, session_dirs = discover_session_directories(args.source)
-    for d in session_dirs:
-        metadata.extend(parse_files(d))
+    metadata = process_map(parse_files, session_dirs, desc="Parsing File Names", unit='sessions', chunksize=1)
+    metadata = chain(*metadata)  # Flatten list of lists
 
     if args.hdf5_only:
         metadata = filter(lambda m: m.extension == '.hdf5', metadata)

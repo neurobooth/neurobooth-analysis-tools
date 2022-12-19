@@ -17,7 +17,7 @@ setup(
     license='BSD 3-Clause License',
     packages=['neurobooth_analysis_tools'],
     include_package_data=True,
-    entrypoints={
-        'console_scripts': ['slice=neurobooth-analysis-tools.slice:main']
-    }
+    entry_points={
+        'console_scripts': ['slice=neurobooth_analysis_tools.slice:main'],
+    },
 )

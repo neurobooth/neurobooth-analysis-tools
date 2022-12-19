@@ -62,6 +62,8 @@ def parse_files(session_path: str) -> List[FileMetadata]:
             continue
         if '_jittered' in f:  # Jitter files should be ignored
             continue
+        if is_tmp(f) or is_swp(f):  # Do not handle temporary files
+            continue
         metadata.append(parse_file(session_path, f))
     return metadata
 
@@ -69,6 +71,9 @@ def parse_files(session_path: str) -> List[FileMetadata]:
 def parse_file(session_path: str, file_name: str) -> FileMetadata:
     """Parse the information from a single Neurobooth data file name"""
     match = re.fullmatch(DATA_FILE_PATTERN, file_name)
+    if match is None:
+        raise FilenameException(f"Could not parse {file_name}.")
+
     subj_id = match[1]
     year, month, day = int(match[2]), int(match[3]), int(match[4])
     hour, minute, second = int(match[5]), int(match[6]), int(match[7])
@@ -101,7 +106,7 @@ def file_str_to_device_enum(device_str: str, file_name: str) -> NeuroboothDevice
     """Based on a device substring in a file name, figure out the related device."""
     device_str = device_str.lower()
 
-    if device_str == '' and (is_asc(file_name) or is_edf(file_name)):
+    if is_asc(file_name) or is_edf(file_name):
         return NeuroboothDevice.EyeLink
     elif 'eyelink' in device_str:
         return NeuroboothDevice.EyeLink
@@ -174,3 +179,5 @@ is_xdf = partial(has_extension, extension='.xdf')
 is_txt = partial(has_extension, extension='.txt')
 is_json = partial(has_extension, extension='.json')
 is_csv = partial(has_extension, extension='.csv')
+is_tmp = partial(has_extension, extension='.tmp')
+is_swp = partial(has_extension, extension='.swp')
