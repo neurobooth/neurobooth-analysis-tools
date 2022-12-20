@@ -1,7 +1,7 @@
 import os
 import re
 from functools import partial
-from typing import NamedTuple, Tuple, List
+from typing import NamedTuple, Tuple, List, Union
 from datetime import datetime
 
 from neurobooth_analysis_tools.data.types import NeuroboothTask, NeuroboothDevice
@@ -23,6 +23,20 @@ def is_valid_identifier(identifier: str, pattern: re.Pattern = SUBJECT_YYYY_MM_D
     """Test if a string starts with a SUBJECT_YYYY-MM-DD pattern. (Both - and _ permitted between date fields.)"""
     matches = re.fullmatch(pattern, identifier)
     return matches is not None
+
+
+def parse_session_id(identifier: str, pattern: re.Pattern = SUBJECT_YYYY_MM_DD) -> Tuple[str, datetime]:
+    matches = re.fullmatch(pattern, identifier)
+    if matches is None:
+        raise ValueError(f'{identifier} did not match the expected format.')
+    subject_num, year, month, day = matches.groups()
+
+    date = datetime(int(year), int(month), int(day))
+    return subject_num, date
+
+
+def make_session_id_str(subject: Union[str, int], date: datetime) -> str:
+    return f"{subject}_{date.strftime('%Y_%m_%d')}"
 
 
 def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[str]]:
