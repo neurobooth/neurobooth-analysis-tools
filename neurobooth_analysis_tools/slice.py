@@ -40,7 +40,7 @@ def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
 
     metadata = filter(lambda m: m.datetime.date() >= args.start_date, metadata)
     metadata = filter(lambda m: m.datetime.date() <= args.end_date, metadata)
-    metadata = filter(lambda m: m.device in args.devices, metadata)
+    metadata = filter(lambda m: m.data in args.devices, metadata)
     metadata = filter(lambda m: m.task in args.tasks, metadata)
 
     return list(metadata)  # Resolve filters
