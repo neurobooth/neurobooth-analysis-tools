@@ -140,7 +140,7 @@ def create_instruction_mask(
     return mask
 
 
-def load_eyelink(device: Device) -> pd.DataFrame:
+def extract_eyelink(device: Device) -> pd.DataFrame:
     """
     Extract a DataFrame for the time-series present in an EyeLink device file.
     Column order is currently hard-coded due to misleading column headers.
@@ -163,7 +163,7 @@ def load_eyelink(device: Device) -> pd.DataFrame:
     return df
 
 
-def load_yeti(device: Device) -> pd.DataFrame:
+def extract_yeti(device: Device) -> pd.DataFrame:
     """Extract a DataFrame for the time-series present in a Yeti mic device file."""
     # Data is not a continuous stream. Instead, it is a matrix of "chunks".
     # Time needs to be interpolated within each chunk.
@@ -204,7 +204,7 @@ def load_yeti(device: Device) -> pd.DataFrame:
     return df
 
 
-def load_mean_video_rgb(device: Device, exclude_beginning: bool = False) -> pd.DataFrame:
+def extract_mean_video_rgb(device: Device, exclude_beginning: bool = False) -> pd.DataFrame:
     """Extract a DataFrame representing mean color channels in a processed video time stream."""
     df = pd.DataFrame(
         data=device.data.time_series,
