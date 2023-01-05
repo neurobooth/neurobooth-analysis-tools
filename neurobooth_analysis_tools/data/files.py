@@ -1,9 +1,11 @@
 import os
 import re
 from functools import partial
+from importlib import resources
 from typing import NamedTuple, Tuple, List, Union
 from datetime import datetime
 
+from neurobooth_analysis_tools import data
 from neurobooth_analysis_tools.data.types import NeuroboothTask, NeuroboothDevice
 
 # Regex patterns
@@ -195,3 +197,8 @@ is_json = partial(has_extension, extension='.json')
 is_csv = partial(has_extension, extension='.csv')
 is_tmp = partial(has_extension, extension='.tmp')
 is_swp = partial(has_extension, extension='.swp')
+
+
+def default_source_directories() -> List[str]:
+    lines = resources.read_text(data, 'default_source_directories.txt').strip().splitlines(keepends=False)
+    return [os.path.abspath(line) for line in lines]

@@ -8,15 +8,14 @@ Because of storage concerns, video data is not currently supported as part of a 
 import os
 import argparse
 import datetime
-from importlib import resources
 from typing import List
 from functools import partial
 from itertools import chain
 from tqdm.contrib.concurrent import process_map
 import sysrsync
 
-from neurobooth_analysis_tools import data
 from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, FileMetadata
+from neurobooth_analysis_tools.data.files import default_source_directories
 from neurobooth_analysis_tools.data.types import NeuroboothDevice, NeuroboothTask
 
 
@@ -91,7 +90,7 @@ def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace
 
     # Load default source directories if necessary, then check that each source directory is valid.
     if args.source is None:
-        args.source = load_default_source_directories()
+        args.source = default_source_directories()
     else:
         args.source = [os.path.abspath(d) for d in args.source]
     for d in args.source:
@@ -112,11 +111,6 @@ def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace
     # Default to all tasks if no flag is specified
     if args.tasks is None:
         args.tasks = [t for t in NeuroboothTask]
-
-
-def load_default_source_directories() -> List[str]:
-    lines = resources.read_text(data, 'default_source_directories.txt').strip().splitlines(keepends=False)
-    return [os.path.abspath(line) for line in lines]
 
 
 def check_valid_directory(parser: argparse.ArgumentParser, directory: str) -> None:
