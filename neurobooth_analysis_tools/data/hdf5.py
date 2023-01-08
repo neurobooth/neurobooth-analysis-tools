@@ -97,17 +97,20 @@ def extract_marker_event_time(device: Device, event_prefix: str) -> np.ndarray:
     return marker.time_stamps[mask]
 
 
-def extract_event_boundaries(device: Device, start_prefix: str, end_prefix: str) -> Tuple[float, float]:
+def extract_event_boundaries(device: Device, start_prefix: str, end_prefix: str) -> Tuple[np.ndarray, np.ndarray]:
     """Extract the times corresponding to the start and end of an event (based on the specified event prefixes)"""
     start = extract_marker_event_time(device, start_prefix)
     end = extract_marker_event_time(device, end_prefix)
 
-    if start.shape[0] == 0 or end.shape[0] == 0:
+    n_start, n_end = start.shape[0], end.shape[0]
+    if n_start == 0 or n_end == 0:
         raise DataException("Event boundaries could not be found.")
-    elif start.shape[0] > 1 or end.shape[0] > 1:
-        raise DataException("Multiple event boundaries detected.")
+    if n_start != n_end:
+        raise DataException(f"Mismatched event boundaries! #({start_prefix})={n_start}, #({end_prefix})={n_end}.")
+    if np.sum((end - start) < 0) > 0:
+        raise DataException("Start of event occurred before end of event!")
 
-    return start[0], end[0]
+    return start, end
 
 
 extract_task_boundaries = partial(extract_event_boundaries, start_prefix='Task_start', end_prefix='Task_end')
@@ -120,23 +123,33 @@ extract_instruction_boundaries = partial(
 
 def create_task_mask(
         device: Device,
-        time_stamps: np.ndarray
+        time_stamps: np.ndarray,
+        allow_multiple: bool = True,
 ) -> np.ndarray:
     """Create a Boolean mask for the given timestamps indicating task performance."""
-    start, end = extract_task_boundaries(device)
+    starts, ends = extract_task_boundaries(device)
+    if not allow_multiple and starts.shape[0] > 1:
+        raise DataException("Multiple task periods detected.")
+
     mask = np.zeros(time_stamps.shape, dtype=bool)
-    mask[(time_stamps >= start) & (time_stamps <= end)] = True
+    for start, end in zip(starts, ends):
+        mask[(time_stamps >= start) & (time_stamps <= end)] = True
     return mask
 
 
 def create_instruction_mask(
         device: Device,
-        time_stamps: np.ndarray
+        time_stamps: np.ndarray,
+        allow_multiple: bool = True,
 ) -> np.ndarray:
     """Create a Boolean mask for the given timestamps indicating the instruction delivery period."""
-    start, end = extract_instruction_boundaries(device)
+    starts, ends = extract_instruction_boundaries(device)
+    if not allow_multiple and starts.shape[0] > 1:
+        raise DataException("Multiple instruction periods detected.")
+
     mask = np.zeros(time_stamps.shape, dtype=bool)
-    mask[(time_stamps >= start) & (time_stamps <= end)] = True
+    for start, end in zip(starts, ends):
+        mask[(time_stamps >= start) & (time_stamps <= end)] = True
     return mask
 
 
