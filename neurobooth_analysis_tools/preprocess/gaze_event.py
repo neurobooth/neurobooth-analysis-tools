@@ -1,11 +1,10 @@
 """
 An algorithm for detection of gaze events (i.e., saccades and fixations).
 
-Reference code in MATLAB/C/R: https://github.com/richardschweitzer/OnlineSaccadeDetection
+Reference code: https://github.com/richardschweitzer/OnlineSaccadeDetection
 The R version has an implementation of the Engbert-Kliegl algorithm with endpoint refinement based on post-saccadic
 oscillations.
-
-PSO refinement not currently implemented (as grouping with saccades may be interesting for our analyses).
+PSO refinement not currently implemented (as it may make it easier to identify dysmetric saccades in our analyses).
 """
 
 import numpy as np
@@ -92,13 +91,13 @@ def _smooth_signal(x: np.ndarray, window_size: int) -> np.ndarray:
     for i in range(half_window):
         x_smooth[i] = x[:i+half_window].mean()
         j = x.shape[0] - i
-        x_smooth[j] = x[j-half_window:].mean()
+        x_smooth[j-1] = x[j-half_window:].mean()
 
     return x_smooth
 
 
 def _correct_small_std(msd: float, vel: np.ndarray, thresh: float = 1e-10) -> float:
-    """Adjust the standard deviation estmator if the value is too small."""
+    """Adjust the standard deviation estimator if the value is too small."""
     if msd < thresh:
         msd = np.sqrt(np.nanmean(np.square(vel))) - np.square(np.nanmean(vel))
         if msd < thresh:
