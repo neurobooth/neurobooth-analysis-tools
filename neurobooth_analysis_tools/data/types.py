@@ -1,3 +1,7 @@
+"""
+Shared data types.
+"""
+
 from enum import Enum, IntEnum
 
 
@@ -53,3 +57,9 @@ class NeuroboothDevice(IntEnum):
     Yeti = 4
     Mbient = 5
     Mouse = 6
+
+
+class DataException(Exception):
+    """Exception for data-related errors."""
+    def __init__(self, *args):
+        super(DataException, self).__init__(*args)

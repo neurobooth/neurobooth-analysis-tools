@@ -3,22 +3,16 @@ Functions for loading Neurobooth data from .hdf5 files.
 Some files only provide index and time information and must be synced with an additional source file (e.g., movies).
 """
 
-import os
 import re
 from h5io import read_hdf5
 import pandas as pd
 import numpy as np
 from functools import partial
 from scipy.signal import convolve
-from typing import NamedTuple, Dict, Union, Tuple
+from typing import NamedTuple, Dict, Tuple
 
-from neurobooth_analysis_tools.data.files import FileMetadata
-
-
-class DataException(Exception):
-    """Exception for data-related errors."""
-    def __init__(self, *args):
-        super(DataException, self).__init__(*args)
+from neurobooth_analysis_tools.data.types import DataException
+from neurobooth_analysis_tools.data.files import FILE_PATH, resolve_filename
 
 
 class DataGroup(NamedTuple):
@@ -35,16 +29,9 @@ class Device(NamedTuple):
     marker: DataGroup
 
 
-def load_neurobooth_file(file: Union[str, FileMetadata]) -> Device:
+def load_neurobooth_file(file: FILE_PATH) -> Device:
     """Load a neurobooth file and return its contents in a structured form."""
-    if isinstance(file, FileMetadata):
-        path = os.path.join(file.session_path, file.file_name)
-    elif isinstance(file, str):
-        path = file
-    else:
-        raise ValueError("Unsupported argument type.")
-
-    data = read_hdf5(path)
+    data = read_hdf5(resolve_filename(file))
     if not isinstance(data, dict):
         raise DataException(f"Unexpected object type in HDF5 file: {type(data)}")
 
@@ -176,7 +163,7 @@ def extract_eyelink(device: Device) -> pd.DataFrame:
     return df
 
 
-def extract_yeti(device: Device) -> pd.DataFrame:
+def extract_yeti(device: Device, include_event_flags: bool = True) -> pd.DataFrame:
     """Extract a DataFrame for the time-series present in a Yeti mic device file."""
     # Data is not a continuous stream. Instead, it is a matrix of "chunks".
     # Time needs to be interpolated within each chunk.
@@ -211,13 +198,19 @@ def extract_yeti(device: Device) -> pd.DataFrame:
         'Amplitude': audio,
         'Time_LSL': device_ts
     })
-    df['Flag_Instructions'] = create_instruction_mask(device, device_ts)
-    df['Flag_Task'] = create_task_mask(device, device_ts)
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, device_ts)
+        df['Flag_Task'] = create_task_mask(device, device_ts)
 
     return df
 
 
-def extract_mean_video_rgb(device: Device, exclude_beginning: bool = False) -> pd.DataFrame:
+def extract_mean_video_rgb(
+        device: Device,
+        exclude_beginning: bool = False,
+        include_event_flags: bool = True
+) -> pd.DataFrame:
     """Extract a DataFrame representing mean color channels in a processed video time stream."""
     df = pd.DataFrame(
         data=device.data.time_series,
@@ -230,8 +223,39 @@ def extract_mean_video_rgb(device: Device, exclude_beginning: bool = False) -> p
         start_idx = find_idx_stable_sample_rate(device.data.time_stamps)
         df = df.iloc[start_idx:]
 
-    df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
-    df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
+        df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
+
+    return df
+
+
+def extract_iphone(
+        device: Device,
+        exclude_beginning: bool = False,
+        include_event_flags: bool = True
+) -> pd.DataFrame:
+    """Extract a DataFrame repsenting frame number and timing information."""
+    df = pd.DataFrame(
+        device.data.time_series,
+        columns=('FrameNum', 'Time_iPhone', 'Time_Unix'),
+    )
+    df['Time_LSL'] = device.data.time_stamps
+
+    # Remove erroneous first and last samples if present
+    if df['FrameNum'].iloc[0] == df['FrameNum'].iloc[1]:
+        df = df.drop(0).reset_index(drop=True)
+    if df['FrameNum'].iloc[-1] == df['FrameNum'].iloc[-2]:
+        df = df.drop(df['FrameNum'].size-1).reset_index(drop=True)
+
+    if exclude_beginning:
+        # Discard the beginning of the time-series where the sampling rate/data are untrustworthy
+        start_idx = find_idx_stable_sample_rate(device.data.time_stamps)
+        df = df.iloc[start_idx:]
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
+        df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
 
     return df
 

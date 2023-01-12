@@ -5,6 +5,6 @@ sqlalchemy
 sysrsync~=1.1.0
 tqdm
 matplotlib
-scipy
+scipy=1.10.0
 moviepy
 h5io

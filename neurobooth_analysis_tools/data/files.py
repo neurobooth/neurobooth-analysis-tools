@@ -2,7 +2,7 @@ import os
 import re
 from functools import partial
 from importlib import resources
-from typing import NamedTuple, Tuple, List, Union
+from typing import NamedTuple, Tuple, List, Union, Optional
 from datetime import datetime
 
 from neurobooth_analysis_tools import data
@@ -19,6 +19,30 @@ class FilenameException(Exception):
     """Exception for unexpected Neurobooth file name pattern"""
     def __init__(self, *args):
         super(FilenameException, self).__init__(*args)
+
+
+class FileMetadata(NamedTuple):
+    session_path: str
+    file_name: str
+    subject_id: str
+    datetime: datetime
+    task: NeuroboothTask
+    device: NeuroboothDevice
+    device_info: str
+    extension: str
+
+
+FILE_PATH = Union[str, FileMetadata]
+
+
+def resolve_filename(file: FILE_PATH) -> str:
+    """Load a neurobooth file and return its contents in a structured form."""
+    if isinstance(file, FileMetadata):
+        return os.path.join(file.session_path, file.file_name)
+    elif isinstance(file, str):
+        return file
+    else:
+        raise ValueError("Unsupported argument type.")
 
 
 def is_valid_identifier(identifier: str, pattern: re.Pattern = SUBJECT_YYYY_MM_DD) -> bool:
@@ -53,17 +77,6 @@ def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[
                 session_dirs.append(session_path)
 
     return sessions, session_dirs
-
-
-class FileMetadata(NamedTuple):
-    session_path: str
-    file_name: str
-    subject_id: str
-    datetime: datetime
-    task: NeuroboothTask
-    device: NeuroboothDevice
-    device_info: str
-    extension: str
 
 
 def parse_files(session_path: str) -> List[FileMetadata]:
@@ -202,3 +215,16 @@ is_swp = partial(has_extension, extension='.swp')
 def default_source_directories() -> List[str]:
     lines = resources.read_text(data, 'default_source_directories.txt').strip().splitlines(keepends=False)
     return [os.path.abspath(line) for line in lines]
+
+
+def discover_associated_files(file: FileMetadata, extensions: Optional[List[str]] = None) -> List[FILE_PATH]:
+    """Get a list of data files all pertaining to the same session, task, and device.
+    (Optionally filtered for particular file extensions.)
+    An example would be retrieving .json and .mov files associated with the iPhone .hdf5 file.
+    """
+    files = parse_files(file.session_path)
+    files = filter(lambda f: f.task == file.task, files)
+    files = filter(lambda f: f.device == file.device, files)
+    if extensions is not None:
+        files = filter(lambda f: f.extension in extensions, files)
+    return list(files)  # Resolve iterator
