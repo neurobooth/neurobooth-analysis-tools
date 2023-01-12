@@ -171,6 +171,9 @@ def extract_yeti(device: Device, include_event_flags: bool = True) -> pd.DataFra
     chunk_ts = device.data.time_stamps
     n_chunks, chunk_size = chunks.shape
 
+    if n_chunks < 2:
+        raise DataException(f"Not Implemented for {n_chunks} audio chunks.")
+
     # If odd, the first column of each chunk is the elapsed time since the prior chunk.
     # Discard it and keep the amplitude data.
     if chunk_size % 2:
