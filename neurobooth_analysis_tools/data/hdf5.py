@@ -47,9 +47,14 @@ def _extract_data_group(group: Dict, flatten_time_series: bool = False) -> DataG
     if flatten_time_series:
         time_series = np.array(time_series).flatten()
 
+    if 'footer' in group:
+        footer = group['footer']
+    else:
+        footer = {}
+
     return DataGroup(
         info=group['info'],
-        footer=group['footer'],
+        footer=footer,
         time_series=time_series,
         time_stamps=group['time_stamps'],
     )
@@ -244,6 +249,9 @@ def extract_iphone(
         columns=('FrameNum', 'Time_iPhone', 'Time_Unix'),
     )
     df['Time_LSL'] = device.data.time_stamps
+
+    if df.shape[1] < 2:
+        raise DataException(f"iPhone HDF file only has {df.shape[1]} data rows.")
 
     # Remove erroneous first and last samples if present
     if df['FrameNum'].iloc[0] == df['FrameNum'].iloc[1]:
