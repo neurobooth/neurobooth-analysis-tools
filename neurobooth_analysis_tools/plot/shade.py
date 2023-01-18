@@ -14,9 +14,9 @@ def shade_mask(ax: plt.Axes, mask: np.ndarray, ts: np.ndarray, plot_kws: Optiona
     if plot_kws is None:
         plot_kws = {}
 
-    if mask.dtype == np.bool:
+    if np.issubdtype(mask.dtype, np.bool_):
         _shade_bool_mask(ax, mask, ts, plot_kws)
-    elif mask.dtype == np.int:
+    elif np.issubdtype(mask.dtype, np.int_):
         _shade_int_mask(ax, mask, ts, plot_kws)
     else:
         raise NotImplemented(f"shade_mask not implemented for mask arrays with dtype {mask.dtype}")

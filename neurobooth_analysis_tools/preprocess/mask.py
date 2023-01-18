@@ -8,9 +8,9 @@ import numpy as np
 
 def detect_edges(mask: np.ndarray, include_endpoints=False) -> np.ndarray:
     """Convenience function to select an appropriate implementation based on the mask data type"""
-    if mask.dtype == np.bool:
+    if np.issubdtype(mask.dtype, np.bool_):
         return detect_bool_edges(mask, include_endpoints=include_endpoints)
-    elif mask.dtype == np.int:
+    elif np.issubdtype(mask.dtype, np.int_):
         return detect_int_edges(mask, include_endpoints=include_endpoints)
     else:
         raise NotImplemented(f"detect_edges not implemented for mask arrays with dtype {mask.dtype}")
