@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from functools import partial
 from scipy.signal import convolve
-from typing import NamedTuple, Dict, Tuple
+from typing import NamedTuple, Optional, Dict, Tuple, List
 
 from neurobooth_analysis_tools.data.types import DataException
 from neurobooth_analysis_tools.data.files import FILE_PATH, resolve_filename
@@ -18,7 +18,7 @@ from neurobooth_analysis_tools.data.files import FILE_PATH, resolve_filename
 class DataGroup(NamedTuple):
     """Common substructure presence for 'device_data' and 'marker' in Neurobooth HDF5 files."""
     info: Dict
-    footer: Dict
+    footer: Optional[Dict]
     time_series: np.ndarray
     time_stamps: np.ndarray
 
@@ -50,7 +50,7 @@ def _extract_data_group(group: Dict, flatten_time_series: bool = False) -> DataG
     if 'footer' in group:
         footer = group['footer']
     else:
-        footer = {}
+        footer = None
 
     return DataGroup(
         info=group['info'],
@@ -66,6 +66,8 @@ _MARKER_POS_PATTERN = re.compile(r'!V TARGET_POS target (\d+), (\d+) .*')
 def extract_marker_position(device: Device) -> pd.DataFrame:
     """Marker data should be identical for each device."""
     marker = device.marker
+    if marker.time_series.shape[0] == 0:
+        raise DataException("Marker time-series is empty.")
 
     x, y, t = [], [], []
     for text, ts in zip(marker.time_series, marker.time_stamps):
@@ -85,31 +87,49 @@ def extract_marker_position(device: Device) -> pd.DataFrame:
 def extract_marker_event_time(device: Device, event_prefix: str) -> np.ndarray:
     """Extract the time(s) of an event in the marker time-series that starts with the specified prefix"""
     marker = device.marker
-    mask = np.char.startswith(marker.time_series, event_prefix)
+    if marker.time_series.shape[0] == 0:
+        raise DataException("Marker time-series is empty.")
+
+    mask = np.char.startswith(np.char.lower(marker.time_series), event_prefix.lower())
     return marker.time_stamps[mask]
 
 
-def extract_event_boundaries(device: Device, start_prefix: str, end_prefix: str) -> Tuple[np.ndarray, np.ndarray]:
+def extract_event_boundaries(device: Device, start_prefixes: List[str], end_prefixes: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     """Extract the times corresponding to the start and end of an event (based on the specified event prefixes)"""
-    start = extract_marker_event_time(device, start_prefix)
-    end = extract_marker_event_time(device, end_prefix)
+    start = np.concatenate([
+        extract_marker_event_time(device, start_prefix)
+        for start_prefix in start_prefixes
+    ], axis=0)
+    end = np.concatenate([
+        extract_marker_event_time(device, end_prefix)
+        for end_prefix in end_prefixes
+    ], axis=0)
+
+    sort_idx = np.argsort(start)
+    start = start[sort_idx]
+    end = end[sort_idx]
 
     n_start, n_end = start.shape[0], end.shape[0]
     if n_start == 0 or n_end == 0:
         raise DataException("Event boundaries could not be found.")
     if n_start != n_end:
-        raise DataException(f"Mismatched event boundaries! #({start_prefix})={n_start}, #({end_prefix})={n_end}.")
+        raise DataException(f"Mismatched event boundaries! #start={n_start}, #end={n_end}.")
     if np.sum((end - start) < 0) > 0:
         raise DataException("Start of event occurred before end of event!")
 
     return start, end
 
 
-extract_task_boundaries = partial(extract_event_boundaries, start_prefix='Task_start', end_prefix='Task_end')
+extract_task_boundaries = partial(
+    extract_event_boundaries,
+    start_prefixes=['Task_start', 'task-continue-repeat_start'],
+    end_prefixes=['Task_end', 'task-continue-repeat_end'],
+)
+# Typo "Intructions" is intentional to reflect typo in the marker time-series
 extract_instruction_boundaries = partial(
     extract_event_boundaries,
-    start_prefix='Intructions_start',
-    end_prefix='Intructions_end'
+    start_prefixes=['Intructions_start', 'Intructions-continue-repeat_start', 'inst-continue-repeat_start'],
+    end_prefixes=['Intructions_end', 'Intructions-continue-repeat_end', 'inst-continue-repeat_end'],
 )
 
 
