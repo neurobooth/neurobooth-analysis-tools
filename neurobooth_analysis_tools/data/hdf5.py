@@ -165,7 +165,7 @@ def create_instruction_mask(
     return mask
 
 
-def extract_eyelink(device: Device) -> pd.DataFrame:
+def extract_eyelink(device: Device, include_event_flags: bool = True) -> pd.DataFrame:
     """
     Extract a DataFrame for the time-series present in an EyeLink device file.
     Column order is currently hard-coded due to misleading column headers.
@@ -182,8 +182,10 @@ def extract_eyelink(device: Device) -> pd.DataFrame:
         )
     )
     df['Time_LSL'] = device.data.time_stamps
-    df['Flag_Instructions'] = create_instruction_mask(device, device.data.time_stamps)
-    df['Flag_Task'] = create_task_mask(device, device.data.time_stamps)
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, device.data.time_stamps)
+        df['Flag_Task'] = create_task_mask(device, device.data.time_stamps)
 
     return df
 
