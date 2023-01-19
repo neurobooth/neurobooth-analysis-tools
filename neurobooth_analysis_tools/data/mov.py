@@ -80,6 +80,8 @@ def load_iphone_audio_deprecated(
     """Load audio data from an iPhone .mov file.
     Data from a synchronized HDF5 file is needed to infer timestamps and marker events.
     Assumes uniform spacing of audio times based on "first" and "last" LSL timestamps.
+
+    WARNING: This code does not account for possible duplicate end frames and should not be used!
     """
     video_ts = sync_device.data.time_stamps
 
