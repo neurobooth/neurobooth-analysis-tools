@@ -1,36 +1,97 @@
 """
 Functions for loading Neurobooth data from .mov files.
 """
-import os
+
+from typing import Union, Tuple
 import numpy as np
 import pandas as pd
-from typing import Union
 import moviepy.editor as mp
 
 import neurobooth_analysis_tools.data.hdf5 as hdf5
-from neurobooth_analysis_tools.data.files import FileMetadata
 
 
-def load_iphone_audio(mov_file: Union[str, FileMetadata], sync_device: hdf5.Device) -> pd.DataFrame:
+def load_iphone_audio(
+        mov_file: hdf5.FILE_PATH,
+        json_df: pd.DataFrame,
+        hdf_df: pd.DataFrame,
+        return_sync_indices: bool = False,
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, np.ndarray]]:
     """Load audio data from an iPhone .mov file.
-    Data from a synchronized HDF5 file is needed to infer timestamps and marker events.
+    Dataframes from the synchronized HDF5 and JSON files are needed to infer timestamps and marker events.
+    Audio is grouped into chunks based on JSON times. Times within each chunk are interpolated using LSL times.
     """
-    video_ts = sync_device.data.time_stamps
-    if isinstance(mov_file, FileMetadata):
-        mov_path = os.path.join(mov_file.session_path, mov_file.file_name)
-    elif isinstance(mov_file, str):
-        mov_path = mov_file
-    else:
-        raise ValueError("Unsupported type for argument mov_file.")
+    sync_df = pd.merge(hdf_df, json_df, on='FrameNum', how='outer')
+    json_time = sync_df['Time_JSON'].to_numpy()
+    lsl_time = sync_df['Time_LSL'].to_numpy()
+    if np.sum(np.isnan(json_time) | np.isnan(lsl_time)) > 0:
+        raise hdf5.DataException("NaN values in synchronization columns")
 
     # Load audio from MOV
-    with mp.VideoFileClip(mov_path) as clip:
+    mov_file = hdf5.resolve_filename(mov_file)
+    with mp.VideoFileClip(mov_file) as clip:
+        audio = clip.audio.to_soundarray()
+
+    # Checks on loaded audio
+    if audio.ndim != 2:
+        raise NotImplementedError("Unexpected dimensionality of audio data. Only stereo audio currently supported.")
+    n_samples, n_channels = audio.shape
+    if n_channels != 2:
+        raise NotImplementedError("Only stereo audio currently supported.")
+
+    # Average stereo channels to get mono
+    audio = audio.mean(axis=1)
+
+    # Calculate audio sync indices corresponding to the spacing of json timestamps
+    sync_idx = json_time - json_time[0]  # Start at 0
+    sync_idx /= sync_idx[-1]  # End at 1
+    sync_idx *= n_samples  # Convert 0..1 to indices 0..N
+    sync_idx = np.round(sync_idx).astype(int)
+    sync_idx[0], sync_idx[-1] = 0, n_samples  # Ensure proper first and last indices
+
+    if np.sum(np.diff(sync_idx) <= 0):  # Ensure sync index spacing makes logical sense
+        raise hdf5.DataException("Invalid audio sync indices... check json timing.")
+
+    # The sync indices represent the boundaries of audio chunks. Linspace times within each chunk.
+    audio_ts_lsl = np.zeros(audio.shape[0])
+    audio_ts_json = np.zeros_like(audio_ts_lsl)
+    for i, (start_idx, end_idx) in enumerate(zip(sync_idx[:-1], sync_idx[1:])):
+        n = end_idx - start_idx
+        audio_ts_lsl[start_idx:end_idx] = np.linspace(lsl_time[i], lsl_time[i+1], n, endpoint=False)
+        audio_ts_json[start_idx:end_idx] = np.linspace(json_time[i], json_time[i+1], n, endpoint=False)
+
+    # Package into DataFrame
+    df = pd.DataFrame.from_dict({
+        'Amplitude': audio,
+        'Time_JSON': audio_ts_json,
+        'Time_LSL': audio_ts_lsl,
+    })
+
+    if return_sync_indices:
+        return df, sync_idx
+    else:
+        return df
+
+
+def load_iphone_audio_deprecated(
+        mov_file: hdf5.FILE_PATH,
+        sync_device: hdf5.Device,
+        include_event_flags: bool = True,
+) -> pd.DataFrame:
+    """Load audio data from an iPhone .mov file.
+    Data from a synchronized HDF5 file is needed to infer timestamps and marker events.
+    Assumes uniform spacing of audio times based on "first" and "last" LSL timestamps.
+    """
+    video_ts = sync_device.data.time_stamps
+
+    # Load audio from MOV
+    mov_file = hdf5.resolve_filename(mov_file)
+    with mp.VideoFileClip(mov_file) as clip:
         audio = clip.audio.to_soundarray()
         audio_sample_rate = clip.audio.fps
 
+    # Checks on loaded audio
     if audio.ndim != 2:
         raise NotImplementedError("Unexpected dimensionality of audio data. Only stereo audio currently supported.")
-
     n_samples, n_channels = audio.shape
     if n_channels != 2:
         raise NotImplementedError("Only stereo audio currently supported.")
@@ -56,7 +117,9 @@ def load_iphone_audio(mov_file: Union[str, FileMetadata], sync_device: hdf5.Devi
         'Amplitude': audio,
         'Time_LSL': audio_ts,
     })
-    df['Flag_Instructions'] = hdf5.create_instruction_mask(sync_device, audio_ts)
-    df['Flag_Task'] = hdf5.create_task_mask(sync_device, audio_ts)
+
+    if include_event_flags:
+        df['Flag_Instructions'] = hdf5.create_instruction_mask(sync_device, audio_ts)
+        df['Flag_Task'] = hdf5.create_task_mask(sync_device, audio_ts)
 
     return df
