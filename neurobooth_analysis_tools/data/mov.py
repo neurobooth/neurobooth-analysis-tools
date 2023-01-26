@@ -72,18 +72,16 @@ def load_iphone_audio(
         return df
 
 
-def load_iphone_audio_deprecated(
+def load_iphone_audio_uniform(
         mov_file: hdf5.FILE_PATH,
-        sync_device: hdf5.Device,
-        include_event_flags: bool = True,
+        hdf_df: pd.DataFrame,
+        exclude_beginning: bool = True,
 ) -> pd.DataFrame:
     """Load audio data from an iPhone .mov file.
     Data from a synchronized HDF5 file is needed to infer timestamps and marker events.
     Assumes uniform spacing of audio times based on "first" and "last" LSL timestamps.
-
-    WARNING: This code does not account for possible duplicate end frames and should not be used!
     """
-    video_ts = sync_device.data.time_stamps
+    video_ts = hdf_df['Time_LSL'].to_numpy()
 
     # Load audio from MOV
     mov_file = hdf5.resolve_filename(mov_file)
@@ -101,10 +99,13 @@ def load_iphone_audio_deprecated(
     # Average stereo channels to get mono
     audio = audio.mean(axis=1)
 
-    # Discard beginning of the video time-series as the sampling rate/data are untrustworthy
-    video_start_idx = hdf5.find_idx_stable_sample_rate(video_ts)
-    start_time = video_ts[video_start_idx]
-    end_time = video_ts[-1]
+    if exclude_beginning:  # Discard beginning of the video time-series as the sampling rate/data are untrustworthy
+        video_start_idx = hdf5.find_idx_stable_sample_rate(video_ts)
+        start_time = video_ts[video_start_idx]
+        end_time = video_ts[-1]
+    else:
+        start_time = video_ts[0]
+        end_time = video_ts[-1]
 
     # Discard a similar amount of audio data
     duration = end_time - start_time
@@ -119,9 +120,4 @@ def load_iphone_audio_deprecated(
         'Amplitude': audio,
         'Time_LSL': audio_ts,
     })
-
-    if include_event_flags:
-        df['Flag_Instructions'] = hdf5.create_instruction_mask(sync_device, audio_ts)
-        df['Flag_Task'] = hdf5.create_task_mask(sync_device, audio_ts)
-
     return df
