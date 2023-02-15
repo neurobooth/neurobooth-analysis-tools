@@ -46,29 +46,17 @@ WITH vd_dist AS (
 )
 SELECT
     subj.subject_id,
-    CASE  -- Replace by subject table flag once populated
-        WHEN CAST(subj.subject_id AS INT) < 100100 THEN TRUE
-        WHEN subj.subject_id = '100110' THEN TRUE
-        WHEN subj.subject_id = '100114' THEN TRUE
-        WHEN subj.subject_id = '100119' THEN TRUE
-        WHEN subj.subject_id = '100143' THEN TRUE
-        WHEN subj.subject_id = '100148' THEN TRUE
-        WHEN subj.subject_id = '100184' THEN TRUE
-        WHEN subj.subject_id = '100199' THEN TRUE
-        WHEN subj.subject_id = '100216' THEN TRUE
-        WHEN subj.subject_id = '100220' THEN TRUE
-        ELSE FALSE
-    END AS test_subject_flag,
+    consent.test_subject_boolean,
     vd_dist.visit_date,
     DATE(vd_dist.demog_date) AS demog_date,
     vd_dist.offset_days AS demog_offset_days,
-    demog.end_time_demographic IS NOT NULL AND ABS(vd_dist.offset_days) <= 30 AS recent_demog,
+    demog.end_time_demographic IS NOT NULL AND ABS(vd_dist.offset_days) <= 60 AS recent_demog,
     vc_dist.clin_date,
     vc_dist.offset_days AS clin_offset_days,
-    clin.date_enrolled IS NOT NULL AND ABS(vc_dist.offset_days) <= 30 AS recent_clin,
+    clin.date_enrolled IS NOT NULL AND ABS(vc_dist.offset_days) <= 60 AS recent_clin,
     DATE(vs_dist.scale_date) AS scale_date,
     vs_dist.offset_days AS scales_offset_days,
-    scales.end_time_ataxia_pd_scales IS NOT NULL AND ABS(vs_dist.offset_days) <= 30 AS recent_scale,
+    scales.end_time_ataxia_pd_scales IS NOT NULL AND ABS(vs_dist.offset_days) <= 60 AS recent_scale,
     EXTRACT(YEAR FROM AGE(vd_dist.visit_date, subj.date_of_birth_subject)) AS age,
     CASE
         WHEN CAST(CAST(subj.gender_at_birth AS FLOAT) AS INT) = 1 THEN 'Male'
@@ -86,21 +74,6 @@ SELECT
         WHEN 0 = ANY(clin.primary_diagnosis) THEN TRUE
         ELSE FALSE
     END AS is_control,
-    CASE
-        WHEN 11 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 18 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 19 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 20 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 21 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 22 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 23 = ANY(clin.primary_diagnosis) THEN TRUE
-        ELSE FALSE
-    END AS is_ataxia,
-    CASE
-        WHEN 16 = ANY(clin.primary_diagnosis) THEN TRUE
-        WHEN 26 = ANY(clin.primary_diagnosis) THEN TRUE
-        ELSE FALSE
-    END AS is_parkinson,
     CASE
         WHEN scales.bars_gait > 95 THEN NULL
         ELSE CAST(scales.bars_gait AS FLOAT) / 10
@@ -130,6 +103,8 @@ SELECT
         ELSE CAST(scales.bars_oculomotor AS FLOAT) / 10
     END AS bars_oculomotor
 FROM subject subj
+LEFT JOIN rc_participant_and_consent_information consent
+	ON subj.subject_id = consent.subject_id
 LEFT JOIN vd_dist
     ON subj.subject_id = vd_dist.subject_id
     AND vd_dist.distance = 1
