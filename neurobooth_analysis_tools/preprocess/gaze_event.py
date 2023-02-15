@@ -8,7 +8,7 @@ PSO refinement not currently implemented (as it may make it easier to identify d
 """
 
 import numpy as np
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 import scipy.signal as signal
 from neurobooth_analysis_tools.preprocess.mask import detect_bool_edges
 
@@ -28,9 +28,10 @@ def detect_saccades(
         pos: np.ndarray,
         ts: np.ndarray,
         vfac: float = 5,
-        min_duration: float = 0.006,
+        min_duration: float = 0.016,
         window_size: int = 5,
         resample: bool = False,
+        fixed_threshold: Optional[np.ndarray] = None,
 ) -> SaccadeResult:
     """
     Engbert-Kliegl (2003) algorithm for saccade detection.
@@ -41,6 +42,8 @@ def detect_saccades(
     :param min_duration: Minimum saccade duration (in seconds).
     :param window_size: Width of the moving average window used for velocity smoothing.
     :param resample: Whether to resample the position time-series before performing detection.
+    :param fixed_threshold: If not None, ignore vfac/adaptive estimate and used the provided elliptic threshold
+    ([x, y] as ndarray). Can be useful if calculating the threshold at a population/task level.
     :return: Indices of saccade onsets and ends, alongside the elliptic threshold.
     """
     if resample:
@@ -51,12 +54,15 @@ def detect_saccades(
     vel[:, 0] = _smooth_signal(vel[:, 0], window_size)
     vel[:, 1] = _smooth_signal(vel[:, 1], window_size)
 
-    # Calculate median estimator for std and use it to find the detection radius
-    vel_median = np.nanmedian(vel, axis=0, keepdims=True)
-    msd = np.sqrt(np.nanmedian(np.square(vel - vel_median), axis=0))
-    msd[0] = _correct_small_std(msd[0], vel[:, 0])
-    msd[1] = _correct_small_std(msd[1], vel[:, 1])
-    radius = vfac * msd
+    if fixed_threshold is None:
+        # Calculate median estimator for std and use it to find the detection radius
+        vel_median = np.nanmedian(vel, axis=0, keepdims=True)
+        msd = np.sqrt(np.nanmedian(np.square(vel - vel_median), axis=0))
+        msd[0] = _correct_small_std(msd[0], vel[:, 0])
+        msd[1] = _correct_small_std(msd[1], vel[:, 1])
+        radius = vfac * msd
+    else:
+        radius = fixed_threshold
 
     # Determine when the velocity greater than the detection radius
     test = np.sum(np.square(vel / radius[np.newaxis, :]), axis=1)

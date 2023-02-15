@@ -1,6 +1,7 @@
 setuptools
 pandas
 numpy
+scipy
 sqlalchemy
 sysrsync~=1.1.0
 tqdm
