@@ -272,6 +272,8 @@ def extract_iphone(
     )
     df['Time_LSL'] = device.data.time_stamps
 
+    df['FrameNum'] = df['FrameNum'].astype('Int64')
+
     if df.shape[1] < 2:
         raise DataException(f"iPhone HDF file only has {df.shape[1]} data rows.")
 

@@ -20,6 +20,9 @@ def load_iphone_audio(
     Dataframes from the synchronized HDF5 and JSON files are needed to infer timestamps and marker events.
     Audio is grouped into chunks based on JSON times. Times within each chunk are interpolated using LSL times.
     """
+    if hdf_df['FrameNum'].iloc[0] == 1:
+        hdf_df['FrameNum'] -= 1
+
     sync_df = pd.merge(hdf_df, json_df, on='FrameNum', how='outer')
     json_time = sync_df['Time_JSON'].to_numpy()
     lsl_time = sync_df['Time_LSL'].to_numpy()
