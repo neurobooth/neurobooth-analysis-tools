@@ -4,7 +4,7 @@ Some files only provide index and time information and must be synced with an ad
 """
 
 import re
-from h5io import read_hdf5
+from h5io import read_hdf5, write_hdf5
 import pandas as pd
 import numpy as np
 from functools import partial
@@ -39,6 +39,25 @@ def load_neurobooth_file(file: FILE_PATH) -> Device:
         data=_extract_data_group(data['device_data']),
         marker=_extract_data_group(data['marker'], flatten_time_series=True),
     )
+
+
+def save_neurobooth_file(file: FILE_PATH, device: Device, overwrite: bool = False) -> None:
+    """Write a new neurobooth HDF file (e.g., after preprocessing an original)."""
+    data = {
+        'device_data': {
+            'info': device.data.info,
+            'footer': device.data.footer,
+            'time_series': device.data.time_series,
+            'time_stamps': device.data.time_stamps,
+        },
+        'marker': {
+            'info': device.marker.info,
+            'footer': device.marker.footer,
+            'time_series': [[ts] for ts in device.marker.time_series],  # Convert back into original format
+            'time_stamps': device.marker.time_stamps,
+        }
+    }
+    write_hdf5(resolve_filename(file), data, overwrite=overwrite)
 
 
 def _extract_data_group(group: Dict, flatten_time_series: bool = False) -> DataGroup:
@@ -268,7 +287,7 @@ def extract_iphone(
     """Extract a DataFrame repsenting frame number and timing information."""
     df = pd.DataFrame(
         device.data.time_series,
-        columns=('FrameNum', 'Time_iPhone', 'Time_Unix'),
+        columns=['FrameNum', 'Time_iPhone', 'Time_Unix'],
     )
     df['Time_LSL'] = device.data.time_stamps
 
@@ -277,7 +296,7 @@ def extract_iphone(
     if df.shape[1] < 2:
         raise DataException(f"iPhone HDF file only has {df.shape[1]} data rows.")
 
-    # Remove erroneous first and last samples if present
+    # Remove duplicate first and last samples if present
     if df['FrameNum'].iloc[0] == df['FrameNum'].iloc[1]:
         df = df.drop(0).reset_index(drop=True)
     if df['FrameNum'].iloc[-1] == df['FrameNum'].iloc[-2]:
@@ -287,6 +306,27 @@ def extract_iphone(
         # Discard the beginning of the time-series where the sampling rate/data are untrustworthy
         start_idx = find_idx_stable_sample_rate(device.data.time_stamps)
         df = df.iloc[start_idx:]
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
+        df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
+
+    return df
+
+
+def extract_flir(
+        device: Device,
+        include_event_flags: bool = True
+) -> pd.DataFrame:
+    """Extract a DataFrame repsenting frame number and timing information."""
+    df = pd.DataFrame(
+        device.data.time_series,
+        columns=['FrameNum', 'Time_FLIR'],
+    )
+    df['Time_LSL'] = device.data.time_stamps
+
+    df['FrameNum'] = df['FrameNum'].astype('Int64')
+    df['Time_FLIR'] /= 1e9  # Convert from nanoseconds to seconds
 
     if include_event_flags:
         df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
