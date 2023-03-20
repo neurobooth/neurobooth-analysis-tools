@@ -1,9 +1,7 @@
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine
-from typing import NamedTuple, List
-
-from neurobooth_analysis_tools.data.sql.queries import QUERY_CLIN_DEMOG_SCALE
+from typing import NamedTuple, List, Dict
 
 
 class DatabaseConnectionInfo(NamedTuple):
@@ -18,29 +16,60 @@ class DatabaseConnectionInfo(NamedTuple):
         return f'postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.dbname}'
 
 
-class SubjectInfo:
+class DatabaseConnection:
     """Load and provide easy access to Neuropheno subject demographics and clinical information."""
+    session: pd.DataFrame
+    demographic: pd.DataFrame
+    clinical: pd.DataFrame
+    scales: pd.DataFrame
 
     def __init__(self, connection_info: DatabaseConnectionInfo):
         """Connect to the database and execute a query to download and cache subject information"""
-        engine = create_engine(connection_info.postgresql_url())
+        self.connection_info = connection_info
 
-        date_columns = ['visit_date', 'demog_date', 'clin_date', 'scale_date']
+    def download(self):
+        """Download tables likely to be useful for analysis and fuzzy-join them with sessions by date."""
+        tables = self.download_tables(
+            'rc_visit_dates',
+            'rc_demographic_clean',
+            'rc_clinical_clean',
+            'rc_ataxia_pd_scales_clean',
+        )
+        self.session = tables.pop('rc_visit_dates')
+        session_view = self.session[['subject_id', 'redcap_event_name', 'neurobooth_visit_dates']]
 
+        join_keys = {
+            'rc_demographic_clean': 'end_time_demographic',
+            'rc_clinical_clean': 'end_time_clinical',
+            'rc_ataxia_pd_scales_clean': 'end_time_ataxia_pd_scales',
+        }
+        new_column_prefix = {
+            'rc_demographic_clean': 'demographic',
+            'rc_clinical_clean': 'clinical',
+            'rc_ataxia_pd_scales_clean': 'scales',
+        }
+
+        tables = {
+            name: fuzzy_join_date(
+                session_view, table,
+                hard_on=['subject_id'], fuzzy_on_left='neurobooth_visit_dates', fuzzy_on_right=join_keys[name],
+                offset_column_name=f'{new_column_prefix[name]}_offset_days',
+                how='left'
+            )
+            for name, table in tables.items()
+        }
+        self.demographic = tables['rc_demographic_clean']
+        self.clinical = tables['rc_clinical_clean']
+        self.scales = tables['rc_ataxia_pd_scales_clean']
+
+    def download_tables(self, *table_names: str) -> Dict[str, pd.DataFrame]:
+        """Download and return the specified tables from the database"""
+        engine = create_engine(self.connection_info.postgresql_url())
         with engine.connect() as connection:
-            self.data = pd.read_sql_query(
-                QUERY_CLIN_DEMOG_SCALE,
-                connection,
-                parse_dates={c: {} for c in date_columns},
-            ).convert_dtypes()
-
-    def align_to_input(self, subjects: np.ndarray, dates: np.ndarray) -> pd.DataFrame:
-        """Align the loaded data table to the order of the input."""
-        subj_date = pd.DataFrame.from_dict({
-            'subject_id': subjects,
-            'visit_date': dates
-        })
-        return pd.merge(subj_date, self.data, how='left', on=('subject_id', 'visit_date'))
+            return {
+                table_name: pd.read_sql_table(table_name, connection).convert_dtypes()
+                for table_name in table_names
+            }
 
 
 def fuzzy_join_date(
