@@ -2,10 +2,10 @@ setuptools
 pandas
 numpy
 scipy
-sqlalchemy
+sqlalchemy~=1.4
 sysrsync~=1.1.0
 tqdm
 matplotlib
-scipy=1.10.0
+scipy>=1.10.0
 moviepy
 h5io

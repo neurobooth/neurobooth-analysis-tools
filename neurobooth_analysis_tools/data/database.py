@@ -1,7 +1,16 @@
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine
+import sqlalchemy
 from typing import NamedTuple, List, Dict
+from time import sleep
+
+from neurobooth_analysis_tools.data.types import DataException
+
+
+class DatabaseException(DataException):
+    """Exception for database-related errors."""
+    def __init__(self, *args):
+        super(DataException, self).__init__(*args)
 
 
 class DatabaseConnectionInfo(NamedTuple):
@@ -27,7 +36,7 @@ class DatabaseConnection:
         """Connect to the database and execute a query to download and cache subject information"""
         self.connection_info = connection_info
 
-    def download(self):
+    def download(self) -> None:
         """Download tables likely to be useful for analysis and fuzzy-join them with sessions by date."""
         tables = self.download_tables(
             'rc_visit_dates',
@@ -64,12 +73,37 @@ class DatabaseConnection:
 
     def download_tables(self, *table_names: str) -> Dict[str, pd.DataFrame]:
         """Download and return the specified tables from the database"""
-        engine = create_engine(self.connection_info.postgresql_url())
+        engine = sqlalchemy.create_engine(self.connection_info.postgresql_url())
+        DatabaseConnection.wait_for_refresh(engine, *table_names)
         with engine.connect() as connection:
             return {
                 table_name: pd.read_sql_table(table_name, connection).convert_dtypes()
                 for table_name in table_names
             }
+
+    @staticmethod
+    def wait_for_refresh(
+            engine: sqlalchemy.engine.Engine,
+            *table_names: str,
+            max_polls: int = 6,
+            poll_interval_sec: float = 5,
+    ) -> None:
+        """
+        The Neurobooth database is recreated on an hourly basis.
+        This method checks if the all tables exist. If not, it will block and periodically recheck until either the
+        tables exist or the maximum number of checks is reached.
+        """
+        for _ in range(max_polls):
+            inspection = sqlalchemy.inspect(engine)
+            exists = all([inspection.has_table(table) for table in table_names])
+            if exists:
+                return
+            else:
+                sleep(poll_interval_sec)
+
+        raise DatabaseException(
+            f"Exceeded maximum polls (N={max_polls}) when checking for existence of: {', '.join(table_names)}."
+        )
 
 
 def fuzzy_join_date(
