@@ -287,7 +287,7 @@ def extract_iphone(
     """Extract a DataFrame repsenting frame number and timing information."""
     df = pd.DataFrame(
         device.data.time_series,
-        columns=['FrameNum', 'Time_iPhone', 'Time_Unix'],
+        columns=['FrameNum', 'Time_iPhone', 'Time_ACQ'],
     )
     df['Time_LSL'] = device.data.time_stamps
 
@@ -318,7 +318,7 @@ def extract_flir(
         device: Device,
         include_event_flags: bool = True
 ) -> pd.DataFrame:
-    """Extract a DataFrame repsenting frame number and timing information."""
+    """Extract a DataFrame representing frame number and timing information."""
     df = pd.DataFrame(
         device.data.time_series,
         columns=['FrameNum', 'Time_FLIR'],
@@ -327,6 +327,28 @@ def extract_flir(
 
     df['FrameNum'] = df['FrameNum'].astype('Int64')
     df['Time_FLIR'] /= 1e9  # Convert from nanoseconds to seconds
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
+        df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
+
+    return df
+
+
+def extract_realsense(
+        device: Device,
+        include_event_flags: bool = True
+) -> pd.DataFrame:
+    """Extract a DataFrame representing frame number and timing information."""
+    df = pd.DataFrame(
+        device.data.time_series,
+        columns=['FrameNum', 'FrameNum_RealSense', 'Time_RealSense', 'Time_ACQ'],
+    )
+    df['Time_LSL'] = device.data.time_stamps
+
+    df['FrameNum'] = df['FrameNum'].astype('Int64')
+    df['FrameNum_RealSense'] = df['FrameNum_RealSense'].astype('Int64')
+    df['Time_RealSense'] /= 1e3  # Convert from milliseconds to seconds
 
     if include_event_flags:
         df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
