@@ -230,14 +230,18 @@ def discover_associated_files(
         (E.g., to differentiate multiple devices of the same type).
     :return: A list of associated files matching the specified criteria.
     """
-    files = parse_files(file.session_path)
-    files = filter(lambda f: f.task == file.task, files)
-    files = filter(lambda f: f.device == file.device, files)
+    def is_match(f: FileMetadata):
+        match = (f.subject_id == file.subject_id)
+        match &= (f.datetime == file.datetime)
+        match &= (f.task == file.task)
+        match &= (f.device == file.device)
 
-    if use_device_info:
-        files = filter(lambda f: f.device_info == file.device_info, files)
+        if use_device_info:
+            match &= (f.device_info == file.device_info)
 
-    if extensions is not None:
-        files = filter(lambda f: f.extension in extensions, files)
+        if extensions is not None:
+            match &= (f.extension in extensions)
 
-    return list(files)  # Resolve iterator
+        return match
+
+    return [f for f in parse_files(file.session_path) if is_match(f)]
