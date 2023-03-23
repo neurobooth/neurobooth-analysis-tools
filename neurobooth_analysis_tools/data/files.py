@@ -217,14 +217,27 @@ def default_source_directories() -> List[str]:
     return [os.path.abspath(line) for line in lines]
 
 
-def discover_associated_files(file: FileMetadata, extensions: Optional[List[str]] = None) -> List[FILE_PATH]:
-    """Get a list of data files all pertaining to the same session, task, and device.
-    (Optionally filtered for particular file extensions.)
-    An example would be retrieving .json and .mov files associated with the iPhone .hdf5 file.
+def discover_associated_files(
+        file: FileMetadata,
+        extensions: Optional[List[str]] = None,
+        use_device_info: bool = False,
+) -> List[FILE_PATH]:
+    """
+    Get a list of data files all pertaining to the same session, task, and device.
+    :param file: The file to compare to.
+    :param extensions: Optional filter for file extensions. E.g., only return .json and .mov files.
+    :param use_device_info: Whether to use the device_info field in comparisons.
+        (E.g., to differentiate multiple devices of the same type).
+    :return: A list of associated files matching the specified criteria.
     """
     files = parse_files(file.session_path)
     files = filter(lambda f: f.task == file.task, files)
     files = filter(lambda f: f.device == file.device, files)
+
+    if use_device_info:
+        files = filter(lambda f: f.device_info == file.device_info, files)
+
     if extensions is not None:
         files = filter(lambda f: f.extension in extensions, files)
+
     return list(files)  # Resolve iterator

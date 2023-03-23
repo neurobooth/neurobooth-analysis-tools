@@ -3,6 +3,7 @@ Functions to read raw movie files (.avi, .mov) to extract the mean RGB value of 
 """
 
 import numpy as np
+import pandas as pd
 from tqdm.auto import tqdm
 from typing import Tuple
 
@@ -38,17 +39,23 @@ def mean_frame_rgb(
     device = hdf5.load_neurobooth_file(input_hdf)
     if input_hdf.device == NeuroboothDevice.IPhone:
         df = hdf5.extract_iphone(device, exclude_beginning=False, include_event_flags=False)
+        sync_column = 'FrameNum'
     elif input_hdf.device == NeuroboothDevice.FLIR:
         df = hdf5.extract_flir(device, include_event_flags=False)
+        sync_column = 'FrameNum'
+    elif input_hdf.device == NeuroboothDevice.RealSense:
+        df = hdf5.extract_realsense(device, include_event_flags=False)
+        sync_column = 'FrameNum_RealSense'
     else:
         raise NotImplementedError(f"Mean RGB extraction not implemented for {input_hdf.device.name}.")
 
     # Process the video file
-    frame_number, mean_rgb = process_video_mean_rgb(video_file, progress_bar=progress_bar)
+    mean_rgb = process_video_mean_rgb(video_file, progress_bar=progress_bar)
 
     # Synchronize timestamps
-    mask = df['FrameNum'].isin(frame_number)
-    time_stamps = df['Time_LSL'].loc[mask].to_numpy()
+    sync_df = pd.merge(mean_rgb, df, how='inner', left_on='FrameNum', right_on=sync_column)
+    mean_rgb = sync_df[['R', 'G', 'B']].to_numpy()
+    time_stamps = sync_df['Time_LSL'].to_numpy()
 
     # Alter the appropriate data and write the new HDF5 file
     new_info = device.data.info
@@ -66,12 +73,12 @@ def mean_frame_rgb(
     hdf5.save_neurobooth_file(output_hdf, new_device, overwrite=True)
 
 
-def process_video_mean_rgb(video_file: FILE_PATH, progress_bar: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+def process_video_mean_rgb(video_file: FILE_PATH, progress_bar: bool = False) -> pd.DataFrame:
     """
     Extract the mean RGB value of each frame in the video file.
     :param video_file: The file to processes.
     :param progress_bar: Whether to display a tdqm progress bar (processing will take a noticeable amount of time).
-    :return: (An array of frame numbers, An Nx3 matrix, where each row is a frame and each column is a color channel.)
+    :return: A DataFrame with frame numbers and the mean color channel vales for each frame.
     """
     video_file = resolve_filename(video_file)
     cap = FileVideoStream(video_file).start()
@@ -89,4 +96,7 @@ def process_video_mean_rgb(video_file: FILE_PATH, progress_bar: bool = False) ->
     cap.stop()
     cv2.destroyAllWindows()
 
-    return np.arange(n_frames), frame_means
+    return pd.DataFrame(
+        data=frame_means,
+        columns=['R', 'G', 'B'],
+    ).reset_index(names='FrameNum')
