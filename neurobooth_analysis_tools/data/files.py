@@ -157,7 +157,7 @@ def file_str_to_device_enum(device_str: str, file_name: str) -> NeuroboothDevice
 
 def parse_device_info(device: NeuroboothDevice, device_str: str, file_name: str) -> str:
     """Parse supplementary device information from the data file name."""
-    if device == NeuroboothDevice.RealSense and is_bag(file_name):
+    if device == NeuroboothDevice.RealSense and is_video(file_name):
         if 'intel1' in device_str:
             return 'RealSense 1'
         elif 'intel2' in device_str:
@@ -210,6 +210,10 @@ is_json = partial(has_extension, extension='.json')
 is_csv = partial(has_extension, extension='.csv')
 is_tmp = partial(has_extension, extension='.tmp')
 is_swp = partial(has_extension, extension='.swp')
+
+
+def is_video(file: str) -> bool:
+    return is_bag(file) or is_avi(file) or is_mov(file)
 
 
 def default_source_directories() -> List[str]:
