@@ -53,8 +53,11 @@ def _iphone_json_extract_dropped_video(data: List[Dict[str, str]]) -> pd.DataFra
 
 def _iphone_json_extract_audio(data: List[Dict[str, str]]) -> pd.DataFrame:
     sample_data = [x for x in data if 'AudioSampleCount' in x]
+    sample_time_data = [json.loads(x['AudioSampleTimeReceived']) for x in sample_data]
 
     df = pd.DataFrame.from_dict({
+        'FrameNum': np.array([x['FrameNumber'] for x in sample_time_data], dtype=int),
+        'Time_JSON': np.array([x['Timestamp'] for x in sample_time_data], dtype=float),
         'SampleCount': np.array([x['AudioSampleCount'] for x in sample_data], dtype=int),
         'SampleDuration': np.array([x['AudioSampleDuration'] for x in sample_data], dtype=float),
     })
