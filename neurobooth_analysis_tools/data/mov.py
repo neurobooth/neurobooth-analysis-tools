@@ -10,6 +10,7 @@ import moviepy.editor as mp
 from neurobooth_analysis_tools.data.hdf5 import FILE_PATH, resolve_filename, find_idx_stable_sample_rate
 from neurobooth_analysis_tools.data.json import IPhoneJsonResult
 from neurobooth_analysis_tools.data.types import DataException
+from neurobooth_analysis_tools.preprocess.time import calc_timeseries_offset
 
 
 def load_iphone_audio(
@@ -29,35 +30,40 @@ def load_iphone_audio(
     n_samples_mov, _ = audio.shape
     audio = audio.mean(axis=1)  # Average stereo channels to get mono
 
-    # Reconstruct the cumulative time-series index and durations from the JSON audio samples (batches)
-    sample_counts = json_data.audio['SampleCount'].to_numpy()
-    sample_counts_cum = np.cumsum(sample_counts)
-    sample_counts_cum = np.r_[0, sample_counts_cum]
-    sample_dur_cum = np.cumsum(json_data.audio['SampleDuration'].to_numpy())
-    sample_dur_cum = np.r_[0, sample_dur_cum]
+    # Unpack JSON audio data
+    batch_counts = json_data.audio['SampleCount'].to_numpy()
+    batch_durations = json_data.audio['SampleDuration'].to_numpy()
+    batch_json_ts = json_data.audio['Time_JSON'].to_numpy()
 
-    n_samples_json = sample_counts_cum[-1]
+    # Correct for discrepancies between the number of audio samples in each file
+    n_samples_json = batch_counts.sum()
     if n_samples_json > n_samples_mov:
         raise DataException("More audio samples in JSON than MOV")
-    audio = audio[-n_samples_json:]  # Trim appropriate number of samples from start of MOV audio
+    # audio = audio[-n_samples_json:]  # Trim appropriate number of samples from start of MOV audio
+    audio = audio[:n_samples_json]  # Trim appropriate number of samples from end of MOV audio
 
-    # Construct a relative time-series for full JSON audio
-    relative_time = np.zeros(n_samples_json)
-    for i in range(len(sample_counts)):
-        start_idx, end_idx = sample_counts_cum[i], sample_counts_cum[i+1]
-        start_time, end_time = sample_dur_cum[i], sample_dur_cum[i+1]
+    # Construct relative time-series for JSON audio (assuming consistent sample rate)
+    batch_relative_ts = np.cumsum(batch_durations)
+    total_duration = batch_relative_ts[-1]
+    sample_relative_ts = np.linspace(0, total_duration, n_samples_json)
+    # JSON times are closest to the last sample of each batch, so the last sample of the first batch should be 0
+    sample_relative_ts -= batch_durations[0]
 
-        relative_time[start_idx:end_idx] = np.linspace(start_time, end_time, sample_counts[i], endpoint=False)
+    # Figure out the offset of the batch durations with JSON to get uniformly spaced JSON sample times
+    json_offset = calc_timeseries_offset(batch_relative_ts, batch_json_ts)
+    sample_json_ts = sample_relative_ts + json_offset
 
-    # Current strategy: Sync to last video frame. (as buffer may not be flushed at start)
-    relative_time -= relative_time[-1]  # Count up to zero
-    audio_ts_json = hdf_df['Time_iPhone'].iloc[-1] + relative_time
-    audio_ts_lsl = hdf_df['Time_LSL'].iloc[-1] + relative_time
+    # Figure out the offset between JSON and LSL using video frame data in the HDF5 file
+    video_json_ts = hdf_df['Time_iPhone'].to_numpy()
+    video_lsl_ts = hdf_df['Time_LSL'].to_numpy()
+    lsl_offset = video_lsl_ts[:240].mean() - video_json_ts[:240].mean()
+    # lsl_offset = calc_timeseries_offset(video_json_ts, video_lsl_ts)
+    sample_lsl_ts = sample_json_ts + lsl_offset
 
     return pd.DataFrame.from_dict({
         'Amplitude': audio,
-        'Time_JSON': audio_ts_json,
-        'Time_LSL': audio_ts_lsl,
+        'Time_iPhone': sample_json_ts,
+        'Time_LSL': sample_lsl_ts,
     })
 
 
