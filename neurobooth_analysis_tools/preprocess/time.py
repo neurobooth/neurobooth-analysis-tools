@@ -21,6 +21,10 @@ def calc_timeseries_offset(
     """
     Calculate the offset between two timestamp series using least-squares regression.
     Perform quality checks based on the slop and standard error of the intercept.
+
+    WARNING: It seems like this method may suffer from numerical issues.
+    It may be better to instead do: np.mean(ts2 - ts1)
+
     :param ts1: The first timestamp series.
     :param ts2: The second timestamp series. Should have the same units and number of samples as ts1.
     :param slope_eps: Raise an exception if the slope between the series differs from 1 by more than this value.

@@ -10,7 +10,6 @@ import moviepy.editor as mp
 from neurobooth_analysis_tools.data.hdf5 import FILE_PATH, resolve_filename, find_idx_stable_sample_rate
 from neurobooth_analysis_tools.data.json import IPhoneJsonResult
 from neurobooth_analysis_tools.data.types import DataException
-from neurobooth_analysis_tools.preprocess.time import calc_timeseries_offset
 
 
 def load_iphone_audio(
@@ -39,7 +38,6 @@ def load_iphone_audio(
     n_samples_json = batch_counts.sum()
     if n_samples_json > n_samples_mov:
         raise DataException("More audio samples in JSON than MOV")
-    # audio = audio[-n_samples_json:]  # Trim appropriate number of samples from start of MOV audio
     audio = audio[:n_samples_json]  # Trim appropriate number of samples from end of MOV audio
 
     # Construct relative time-series for JSON audio (assuming consistent sample rate)
@@ -50,14 +48,13 @@ def load_iphone_audio(
     sample_relative_ts -= batch_durations[0]
 
     # Figure out the offset of the batch durations with JSON to get uniformly spaced JSON sample times
-    json_offset = calc_timeseries_offset(batch_relative_ts, batch_json_ts)
+    json_offset = np.mean(batch_json_ts - batch_relative_ts)
     sample_json_ts = sample_relative_ts + json_offset
 
     # Figure out the offset between JSON and LSL using video frame data in the HDF5 file
     video_json_ts = hdf_df['Time_iPhone'].to_numpy()
     video_lsl_ts = hdf_df['Time_LSL'].to_numpy()
-    lsl_offset = video_lsl_ts[:240].mean() - video_json_ts[:240].mean()
-    # lsl_offset = calc_timeseries_offset(video_json_ts, video_lsl_ts)
+    lsl_offset = np.mean(video_lsl_ts - video_json_ts)
     sample_lsl_ts = sample_json_ts + lsl_offset
 
     return pd.DataFrame.from_dict({
