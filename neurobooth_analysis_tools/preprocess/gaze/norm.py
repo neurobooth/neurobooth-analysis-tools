@@ -90,4 +90,6 @@ def normalize_dva_to_screen(
     norm_factor_px = max(screen.width_px, screen.height_px) / 2
     norm_factor_mm = norm_factor_px * (25.4 / screen.px_per_inch)  # Convert pixels to mm
     norm_factor = np.arctan(norm_factor_mm / mm_to_target)  # Convert to dva
+    if not np.isscalar(norm_factor):
+        norm_factor = norm_factor[:, np.newaxis]
     return gaze_pos / norm_factor
