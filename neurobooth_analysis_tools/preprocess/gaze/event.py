@@ -214,3 +214,46 @@ def _median_absolute_deviation(x: np.ndarray, constant: float = 1.4826, axis: in
     center = np.nanmedian(x, axis=axis, keepdims=True)
     abs_dev = np.abs(x - center)
     return constant * np.median(abs_dev, axis=axis)
+
+
+def exclude_blink_saccades(
+        blink_mask: np.ndarray,
+        saccade_mask: np.ndarray,
+        ts: np.ndarray,
+        window_sec: float = 0.1,
+) -> np.ndarray:
+    """
+    Create a Boolean mask that is True within 1) D ms of a blink event and 2) the duration of any saccades within D ms
+    of a blink event. This will may help to exclude blink-related artifacts (including saccade-blink-saccade).
+
+    :param blink_mask: A Boolean mask indicating blink events
+    :param saccade_mask: A Boolean mask indicating saccade events
+    :param ts: Time in seconds
+    :param window_sec: The duration adjacent to saccade to be considered contaiminated by a blink event
+        (D in the description above).
+    :return: An updated blink mask that excludes adjacent contaminated data.
+    """
+    blink_edges = detect_bool_edges(blink_mask, include_endpoints=True)
+    saccade_edges = detect_bool_edges(saccade_mask, include_endpoints=True)
+
+    blink_edges_ts = [  # Find edges of blink events in time units
+        (ts[start], ts[end])
+        for start, end in zip(blink_edges[:-1], blink_edges[1:])
+        if blink_mask[start]
+    ]
+    saccade_edges = [  # Find edges of saccade events in array indices
+        (start, end)
+        for start, end in zip(saccade_edges[:-1], saccade_edges[1:])
+        if saccade_mask[start]
+    ]
+
+    # Construct the updated time-series mask
+    mask = np.zeros(blink_mask.shape, dtype=bool)
+    for blink_start, blink_end in blink_edges_ts:
+        # Window begins as blink + D seconds in either direction
+        window = (ts >= (blink_start - window_sec)) & (ts <= (blink_end + window_sec))
+        for saccade_start, saccade_end in saccade_edges:
+            # If the window overlaps with any saccade, extend the window to the saccade boundaries
+            window[saccade_start:saccade_end] |= window[saccade_start:saccade_end].any()
+        mask |= window  # Update the full time-series mask with the window
+    return mask
