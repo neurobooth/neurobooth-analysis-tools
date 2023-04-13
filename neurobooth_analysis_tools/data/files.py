@@ -31,6 +31,19 @@ class FileMetadata(NamedTuple):
     device_info: str
     extension: str
 
+    def _change_extension(self, new_extension: str) -> 'FileMetadata':
+        """
+        Create a similar metadata object with a different file extension.
+        :param new_extension: The new file extension (including the ".").
+        :return: A new FileMetadata object representing a simular file with a different extension.
+        """
+        base, _ = os.path.splitext(self.file_name)
+        new_filename = base + new_extension
+        return self._replace(
+            file_name=new_filename,
+            extension=new_extension,
+        )
+
 
 FILE_PATH = Union[str, FileMetadata]
 
