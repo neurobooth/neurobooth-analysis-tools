@@ -11,14 +11,16 @@ import pyrealsense2 as rs
 from neurobooth_analysis_tools.data.files import resolve_filename, FILE_PATH
 
 
-def bag2avi(bag_file: FILE_PATH, avi_file: FILE_PATH) -> None:
+def bag2avi(bag_file: FILE_PATH, avi_file: FILE_PATH, timestamp_file: FILE_PATH) -> None:
     """
     Extract the color information from the .bag file and save it as a .avi file.
     :param bag_file: The input .bag file to extract color frames from
     :param avi_file: The output .avi file to write to
+    :param timestamp_file: A .npy file to save frame timestamps to
     """
     bag_file = resolve_filename(bag_file)
     avi_file = resolve_filename(avi_file)
+    timestamp_file = resolve_filename(timestamp_file)
 
     # Set up the .bag file for streaming
     config = rs.config()
@@ -36,12 +38,17 @@ def bag2avi(bag_file: FILE_PATH, avi_file: FILE_PATH) -> None:
 
     # Write the .avi file
     video_out = cv2.VideoWriter(avi_file, cv2.VideoWriter_fourcc(*'MJPG'), fps, (width, height))
+    frame_timestamps = []
     while True:
         success, frame = pipeline.try_wait_for_frames(timeout_ms=1)
         if not success:
             break
+        frame_timestamps.append(frame.get_timestamp())
         frame = np.asanyarray(frame.get_color_frame().get_data())
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         video_out.write(frame)
     video_out.release()
     pipeline.stop()
+
+    # Write out the extracted frame timestamps
+    np.save(timestamp_file, np.array(frame_timestamps, dtype='float64'))

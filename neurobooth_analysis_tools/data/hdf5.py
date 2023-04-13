@@ -2,7 +2,7 @@
 Functions for loading Neurobooth data from .hdf5 files.
 Some files only provide index and time information and must be synced with an additional source file (e.g., movies).
 """
-
+import json
 import re
 from h5io import read_hdf5, write_hdf5
 import pandas as pd
@@ -258,14 +258,18 @@ def extract_yeti(device: Device, include_event_flags: bool = True) -> pd.DataFra
 def extract_mean_video_rgb(
         device: Device,
         exclude_beginning: bool = False,
-        include_event_flags: bool = True
+        include_event_flags: bool = True,
 ) -> pd.DataFrame:
     """Extract a DataFrame representing mean color channels in a processed video time stream."""
+
     df = pd.DataFrame(
         data=device.data.time_series,
-        columns=('MeanColor_R', 'MeanColor_G', 'MeanColor_B',)
+        columns=extract_column_names(device.data),
     )
     df['Time_LSL'] = device.data.time_stamps
+    df = df.rename(columns={
+        'R': 'MeanColor_R', 'B': 'MeanColor_B', 'G': 'MeanColor_G',
+    })
 
     if exclude_beginning:
         # Discard the beginning of the time-series where the sampling rate/data are untrustworthy
@@ -376,3 +380,14 @@ def find_idx_stable_sample_rate(ts: np.ndarray, eps_hz: float = 1.0, window_widt
     first = np.flatnonzero(within_band)[0]
 
     return first + 1  # Account for the loss of a sample due to np.diff
+
+
+def extract_column_names(data_group: DataGroup) -> List[str]:
+    """
+    Extract saved time-series column names from the info header of a data group in the HDF5 file.
+    :param data_group: The data group to extract column names from.
+    :return: The decoded list of column names.
+    """
+    name_str = data_group.info['desc'][0]['column_names'][0]
+    name_str = name_str.replace("'", '"')
+    return json.loads(name_str)
