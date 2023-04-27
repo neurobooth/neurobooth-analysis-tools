@@ -18,6 +18,9 @@ setup(
     packages=['neurobooth_analysis_tools'],
     include_package_data=True,
     entry_points={
-        'console_scripts': ['slice=neurobooth_analysis_tools.slice:main'],
+        'console_scripts': [
+            'slice=neurobooth_analysis_tools.script.slice:main',
+            'meanrgb=neurobooth_analysis_tools.script.mean_rgb:main',
+        ],
     },
 )
