@@ -15,8 +15,8 @@ from tqdm.contrib.concurrent import process_map
 import sysrsync
 
 from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, FileMetadata
-from neurobooth_analysis_tools.data.files import default_source_directories
 from neurobooth_analysis_tools.data.types import NeuroboothDevice, NeuroboothTask
+from neurobooth_analysis_tools.script.util import check_valid_directory, validate_source_directories
 
 
 def main() -> None:
@@ -84,17 +84,10 @@ def configure_parser() -> argparse.ArgumentParser:
 
 def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """Perform input validation checks on command line arguments."""
-    # Check that the destination directory is valid
+    # Check that directories are valid
+    args.source = validate_source_directories(parser, args.source)
     args.dest = os.path.abspath(args.dest)
     check_valid_directory(parser, args.dest)
-
-    # Load default source directories if necessary, then check that each source directory is valid.
-    if args.source is None:
-        args.source = default_source_directories()
-    else:
-        args.source = [os.path.abspath(d) for d in args.source]
-    for d in args.source:
-        check_valid_directory(parser, d)
 
     # Check that each extension exclusion starts with .
     for e in args.exclude:
@@ -111,11 +104,6 @@ def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace
     # Default to all tasks if no flag is specified
     if args.tasks is None:
         args.tasks = [t for t in NeuroboothTask]
-
-
-def check_valid_directory(parser: argparse.ArgumentParser, directory: str) -> None:
-    if not os.path.isdir(directory):
-        parser.error(f"{directory} is not a valid directory.")
 
 
 def add_directory_group(parser: argparse.ArgumentParser) -> None:
