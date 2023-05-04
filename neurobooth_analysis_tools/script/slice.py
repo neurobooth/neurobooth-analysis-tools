@@ -16,7 +16,7 @@ import sysrsync
 
 from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, FileMetadata
 from neurobooth_analysis_tools.data.types import NeuroboothDevice, NeuroboothTask
-from neurobooth_analysis_tools.script.util import check_valid_directory, validate_source_directories
+from neurobooth_analysis_tools.script.file_util import check_valid_directory, validate_source_directories
 
 
 def main() -> None:
