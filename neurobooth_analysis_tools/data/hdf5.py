@@ -361,6 +361,26 @@ def extract_realsense(
     return df
 
 
+def extract_mbient(
+        device: Device,
+        include_event_flags: bool = True
+) -> pd.DataFrame:
+    """Extract a DataFrame including timestamp, accelerometry, and gyroscopy information."""
+    df = pd.DataFrame(
+        device.data.time_series,
+        columns=['Time_Mbient', 'AccelX', 'AccelY', 'AccelZ', 'GyroX', 'GyroY', 'GyroZ'],
+    )
+    df['Time_LSL'] = device.data.time_stamps
+
+    df['Time_Mbient'] /= 1e3  # Convert from milliseconds to seconds
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
+        df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
+
+    return df
+
+
 def find_idx_stable_sample_rate(ts: np.ndarray, eps_hz: float = 1.0, window_width_sec: int = 1) -> int:
     """Determine when the sampling rate has stabilized to the mean.
     This method is used to trim the beginning off a time-series when data are unreliable.
