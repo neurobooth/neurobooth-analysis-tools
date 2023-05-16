@@ -27,14 +27,16 @@ class DatabaseConnectionInfo(NamedTuple):
 
 class DatabaseConnection:
     """Load and provide easy access to Neuropheno subject demographics and clinical information."""
-    session: pd.DataFrame
-    demographic: pd.DataFrame
-    clinical: pd.DataFrame
-    scales: pd.DataFrame
+    session: pd.DataFrame = None
+    demographic: pd.DataFrame = None
+    clinical: pd.DataFrame = None
+    scales: pd.DataFrame = None
+    test_subjects: np.ndarray = None
 
     def __init__(self, connection_info: DatabaseConnectionInfo):
-        """Connect to the database and execute a query to download and cache subject information"""
+        """Create an object that can connect to the database, run queries or download tables, and cache results."""
         self.connection_info = connection_info
+        self.engine = sqlalchemy.create_engine(self.connection_info.postgresql_url())
 
     def download(self) -> None:
         """Download tables likely to be useful for analysis and fuzzy-join them with sessions by date."""
@@ -73,9 +75,8 @@ class DatabaseConnection:
 
     def download_tables(self, *table_names: str) -> Dict[str, pd.DataFrame]:
         """Download and return the specified tables from the database"""
-        engine = sqlalchemy.create_engine(self.connection_info.postgresql_url())
-        DatabaseConnection.wait_for_refresh(engine, *table_names)
-        with engine.connect() as connection:
+        DatabaseConnection.wait_for_refresh(self.engine, *table_names)
+        with self.engine.connect() as connection:
             return {
                 table_name: pd.read_sql_table(table_name, connection).convert_dtypes()
                 for table_name in table_names
@@ -104,6 +105,27 @@ class DatabaseConnection:
         raise DatabaseException(
             f"Exceeded maximum polls (N={max_polls}) when checking for existence of: {', '.join(table_names)}."
         )
+
+    def get_test_subjects(self, *, use_cache: bool = True) -> np.ndarray:
+        """
+        Determine which subject IDs correspond to test subjects based on the database.
+        :param use_cache: Whether to used cached results (if available) or re-query the database.
+        :return: An array of subject IDs that are test subjects.
+        """
+        if use_cache and self.test_subjects is not None:
+            return self.test_subjects
+
+        query = '''
+        SELECT DISTINCT subject_id
+        FROM rc_participant_and_consent_information
+        WHERE test_subject_boolean
+        ORDER BY subject_id
+        '''
+
+        DatabaseConnection.wait_for_refresh(self.engine, 'rc_participant_and_consent_information')
+        with self.engine.connect() as connection:
+            self.test_subjects = pd.read_sql(query, connection).convert_dtypes().to_numpy(dtype='U').squeeze()
+        return self.test_subjects
 
 
 def fuzzy_join_date(

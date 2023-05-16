@@ -17,6 +17,7 @@ import sysrsync
 from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, FileMetadata
 from neurobooth_analysis_tools.data.types import NeuroboothDevice, NeuroboothTask
 from neurobooth_analysis_tools.script.file_util import check_valid_directory, validate_source_directories
+from neurobooth_analysis_tools.script.secrets import Secrets
 
 
 def main() -> None:
@@ -39,8 +40,13 @@ def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
 
     metadata = filter(lambda m: m.datetime.date() >= args.start_date, metadata)
     metadata = filter(lambda m: m.datetime.date() <= args.end_date, metadata)
-    metadata = filter(lambda m: m.data in args.devices, metadata)
+    metadata = filter(lambda m: m.device in args.devices, metadata)
     metadata = filter(lambda m: m.task in args.tasks, metadata)
+
+    if not args.include_test_subjects:
+        test_subj = Secrets().get_database_connection().get_test_subjects()
+        metadata = filter(lambda m: m.subject_id not in test_subj, metadata)
+        metadata = filter(lambda m: int(m.subject_id) >= 100100, metadata)
 
     return list(metadata)  # Resolve filters
 
@@ -52,18 +58,25 @@ def create_directories(args: argparse.Namespace, metadata: List[FileMetadata]) -
         dest_path = os.path.join(args.dest, d)
         if os.path.exists(dest_path):
             continue
-        os.mkdir(dest_path, mode=file_mode)
+
+        if args.dry_run:
+            print(f'Mkdir {dest_path}')
+        else:
+            os.mkdir(dest_path, mode=file_mode)
 
 
 def copy_files(args: argparse.Namespace, metadata: List[FileMetadata]) -> None:
-    _copy_file = partial(copy_file, dest=args.dest)
+    _copy_file = partial(copy_file, dest=args.dest, dry_run=args.dry_run)
     process_map(_copy_file, metadata, desc="Syncing Files", unit="files", chunksize=1)
 
 
-def copy_file(m: FileMetadata, dest: str) -> None:
+def copy_file(m: FileMetadata, dest: str, dry_run: bool) -> None:
     src = os.path.join(m.session_path, m.file_name)
     dest = os.path.join(dest, os.path.basename(m.session_path), m.file_name)
-    sysrsync.run(source=src, destination=dest)
+    if dry_run:
+        print(f'Copy {src} -> {dest}')
+    else:
+        sysrsync.run(source=src, destination=dest)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -75,10 +88,18 @@ def parse_arguments() -> argparse.Namespace:
 
 def configure_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Create (or update) a slice of Neurobooth data.")
+
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help="Print a list of intended actions without executing them.",
+    )
+
     add_directory_group(parser)
     add_filter_group(parser)
     add_device_group(parser)
     add_task_group(parser)
+
     return parser
 
 
@@ -152,6 +173,11 @@ def add_filter_group(parser: argparse.ArgumentParser) -> None:
         required=False,
         default=[],
         help="Exclude files with the given extension (including the .). Can specify multiple times."
+    )
+    group.add_argument(
+        '--include-test-subjects',
+        action='store_true',
+        help="Include test subject data in the slice."
     )
 
 
