@@ -2,7 +2,7 @@
 Functions for loading Neurobooth data from .mov files.
 """
 
-from typing import Union, Tuple
+from typing import Union, Tuple, Literal
 import numpy as np
 import pandas as pd
 import moviepy.editor as mp
@@ -70,7 +70,7 @@ def load_iphone_audio_uniform(
         exclude_beginning: bool = True,
 ) -> pd.DataFrame:
     """Load audio data from an iPhone .mov file.
-    Data from a synchronized HDF5 file is needed to infer timestamps and marker events.
+    Data from a synchronized HDF5 file is needed to infer timestamps.
     Assumes uniform spacing of audio times based on "first" and "last" LSL timestamps.
     """
     video_ts = hdf_df['Time_LSL'].to_numpy()
@@ -93,6 +93,41 @@ def load_iphone_audio_uniform(
 
     # Interpolate audio timestamps based on the video start and end time-stamps
     audio_ts = np.linspace(start_time, end_time, audio.shape[0])
+
+    # Package into DataFrame
+    df = pd.DataFrame.from_dict({
+        'Amplitude': audio,
+        'Time_LSL': audio_ts,
+    })
+    return df
+
+
+def load_iphone_audio_endpoint_aligned(
+        mov_file: FILE_PATH,
+        hdf_df: pd.DataFrame,
+        align: Literal['begin', 'end'] = 'end',
+) -> pd.DataFrame:
+    """Load audio data from an iPhone .mov file.
+    Data from a synchronized HDF5 file is needed to infer timestamps.
+    Does not change the spacing of the audio data; simply assume a shared endpoint for synchronization (begin or end).
+    """
+    video_ts = hdf_df['Time_LSL'].to_numpy()
+
+    audio, audio_sample_rate = load_audio(mov_file)
+    audio = audio.mean(axis=1)  # Average stereo channels to get mono
+    N = audio.shape[0]
+    audio_duration = N / audio_sample_rate
+
+    # Interpolate audio timestamps based on the chosen alignment frame
+    if align == 'begin':
+        start_time = video_ts[0]
+        end_time = start_time + audio_duration
+    elif align == 'end':
+        end_time = video_ts[-1]
+        start_time = end_time - audio_duration
+    else:
+        raise ValueError(f"'align' argument must be 'begin' or 'end'; received {align}")
+    audio_ts = np.linspace(start_time, end_time, N)
 
     # Package into DataFrame
     df = pd.DataFrame.from_dict({
