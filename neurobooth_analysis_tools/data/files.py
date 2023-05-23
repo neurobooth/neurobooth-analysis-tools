@@ -100,7 +100,7 @@ def parse_files(session_path: str) -> List[FileMetadata]:
             continue
         if re.fullmatch(NOTE_FILE_PATTERN, f) is not None:  # Do not handle notes at the moment
             continue
-        if is_csv(f) or is_xdf(f):  # Do not handle csv or xdf files at the moment
+        if is_csv(f) or is_xdf(f) or is_log(f):  # Do not handle these files at the moment
             continue
         if '_jittered' in f:  # Jitter files should be ignored
             continue
@@ -221,6 +221,7 @@ is_xdf = partial(has_extension, extension='.xdf')
 is_txt = partial(has_extension, extension='.txt')
 is_json = partial(has_extension, extension='.json')
 is_csv = partial(has_extension, extension='.csv')
+is_log = partial(has_extension, extension='.log')
 is_tmp = partial(has_extension, extension='.tmp')
 is_swp = partial(has_extension, extension='.swp')
 
