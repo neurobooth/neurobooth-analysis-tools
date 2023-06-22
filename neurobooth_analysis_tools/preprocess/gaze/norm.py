@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Union, NamedTuple
+from typing import Union, NamedTuple, Tuple, Optional
 
 
 class ScreenProperties(NamedTuple):
@@ -44,7 +44,7 @@ def pixel_to_dva(
         gaze_pos: np.ndarray,
         mm_to_target: Union[float, np.ndarray],
         screen: ScreenProperties,
-        centered: bool = False,
+        gaze_center: Optional[Tuple[float, float]] = None,
 ) -> np.ndarray:
     """
     Convert a gaze time-series (in pixels) to degrees visual angle (dva).
@@ -52,24 +52,26 @@ def pixel_to_dva(
     :param mm_to_target: The distance between the screen and the bullseye target on the subject's forehead.
         Eyelink provides this in mm, so that is the assumed unit we use here.
     :param screen: Properties of the screen, namely its width and height (in pixels) and pixel density (in inches).
-    :param centered: True if the position origin center of the screen.
-        False if the position origin is the top-left of the screen. (Default: False)
+    :param gaze_center: The location of the center of gaze (in screen pixels).
+        Default is to assume that gaze is centered in the center of the screen.
     :return:  The (N x 2) gaze position time-series (in dva)
     """
     gaze_pos = np.copy(gaze_pos)
+    if gaze_center is None:  # Assume center of gaze is screen center if not specified
+        gaze_center = (screen.width_px / 2, screen.height_px / 2)
 
-    if not centered:  # Center the screen if origin is top-left
-        gaze_pos[:, 0] -= screen.width_px / 2
-        gaze_pos[:, 1] -= screen.height_px / 2
+    # Orient pixels relative to the center of gaze
+    gaze_pos[:, 0] -= gaze_center[0]
+    gaze_pos[:, 1] -= gaze_center[1]
 
     # Convert pixels to mm
     gaze_pos *= 25.4 / screen.px_per_inch
 
-    # Convert to dva
-    gaze_pos[:, 0] = np.arctan(gaze_pos[:, 0] / mm_to_target)
-    gaze_pos[:, 1] = np.arctan(gaze_pos[:, 1] / mm_to_target)
+    # Convert to radians visual angle
+    gaze_pos[:, 0] = np.arctan2(gaze_pos[:, 0], mm_to_target)
+    gaze_pos[:, 1] = np.arctan2(gaze_pos[:, 1], mm_to_target)
 
-    return np.degrees(gaze_pos)
+    return np.degrees(gaze_pos)  # Convert to dva
 
 
 def normalize_dva_to_screen(
@@ -89,7 +91,7 @@ def normalize_dva_to_screen(
     # Normalize so that the larger dimension is -1 to 1; preserve aspect ratio
     norm_factor_px = max(screen.width_px, screen.height_px) / 2
     norm_factor_mm = norm_factor_px * (25.4 / screen.px_per_inch)  # Convert pixels to mm
-    norm_factor = np.degrees(np.arctan(norm_factor_mm / mm_to_target))  # Convert mm to dva
+    norm_factor = np.degrees(np.arctan2(norm_factor_mm, mm_to_target))  # Convert mm to dva
     if not np.isscalar(norm_factor):
         norm_factor = norm_factor[:, np.newaxis]
     return gaze_pos / norm_factor
