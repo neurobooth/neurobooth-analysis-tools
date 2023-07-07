@@ -126,6 +126,8 @@ def process_video_mean_rgb(video_file: FILE_PATH, progress_bar: bool = False) ->
     frame_means = np.full((n_frames, 3), np.nan)
     for i in frame_iterator:
         frame = cap.read()
+        if frame is None:
+            continue
         frame_means[i] = frame.mean(axis=(0, 1))
 
     cap.stop()
