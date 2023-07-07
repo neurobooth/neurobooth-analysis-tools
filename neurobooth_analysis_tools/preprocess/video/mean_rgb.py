@@ -127,7 +127,7 @@ def process_video_mean_rgb(video_file: FILE_PATH, progress_bar: bool = False) ->
     for i in frame_iterator:
         frame = cap.read()
         if frame is None:
-            continue
+            break
         frame_means[i] = frame.mean(axis=(0, 1))
 
     cap.stop()
