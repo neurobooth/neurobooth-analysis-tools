@@ -114,7 +114,7 @@ def parse_file(session_path: str, file_name: str) -> FileMetadata:
     """Parse the information from a single Neurobooth data file name"""
     match = re.fullmatch(DATA_FILE_PATTERN, file_name)
     if match is None:
-        raise FilenameException(f"Could not parse {file_name}.")
+        raise FilenameException(f"Could not parse {os.path.join(session_path, file_name)}")
 
     subj_id = match[1]
     year, month, day = int(match[2]), int(match[3]), int(match[4])
