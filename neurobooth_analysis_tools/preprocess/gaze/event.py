@@ -143,6 +143,26 @@ def detect_saccades(
     return mask
 
 
+def filter_small_saccades(sacc: np.ndarray, ts: np.ndarray, min_dur_sec: float = 0.006) -> np.ndarray:
+    """
+    Discard small saccades from a given saccade detection time-series.
+
+    :param sacc: A boolean time-series where True values denote saccades and False values denote fixations.
+    :param ts: The sample times (in seconds) used to compute durations.
+    :param min_dur_sec: Discard saccades at or below the specfied threshold.
+        6 ms is the value used for microsaccades in the Engbert & Mergenthaler 2006 paper.
+    """
+    out = sacc.copy()
+    edges = detect_bool_edges(sacc, include_endpoints=True)
+    for onset, end in zip(test_edges[:-1], test_edges[1:]):
+        if not sacc[onset]:
+            continue
+        duration = ts[end] - ts[onset]
+        if duration <= min_dur_sec:
+            out[onset:end+1] = False
+    return out
+
+
 def detect_blinks(
         pos: np.ndarray,
         fixation_mask: np.ndarray,
