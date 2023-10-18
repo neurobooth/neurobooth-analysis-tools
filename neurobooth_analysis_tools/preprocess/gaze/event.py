@@ -154,7 +154,7 @@ def filter_small_saccades(sacc: np.ndarray, ts: np.ndarray, min_dur_sec: float =
     """
     out = sacc.copy()
     edges = detect_bool_edges(sacc, include_endpoints=True)
-    for onset, end in zip(test_edges[:-1], test_edges[1:]):
+    for onset, end in zip(edges[:-1], edges[1:]):
         if not sacc[onset]:
             continue
         duration = ts[end] - ts[onset]
