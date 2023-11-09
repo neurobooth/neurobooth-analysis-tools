@@ -79,7 +79,7 @@ def _extract_data_group(group: Dict, flatten_time_series: bool = False) -> DataG
     )
 
 
-_MARKER_POS_PATTERN = re.compile(r'!V TARGET_POS target (\d+), (\d+) .*')
+_MARKER_POS_PATTERN = re.compile(r'!V TARGET_POS target(_\d+)? (\d+), (\d+) .*')
 
 
 def extract_marker_position(device: Device) -> pd.DataFrame:
@@ -88,15 +88,17 @@ def extract_marker_position(device: Device) -> pd.DataFrame:
     if marker.time_series.shape[0] == 0:
         raise DataException("Marker time-series is empty.")
 
-    x, y, t = [], [], []
+    tgt, x, y, t = [], [], [], []
     for text, ts in zip(marker.time_series, marker.time_stamps):
         match = re.match(_MARKER_POS_PATTERN, text)
         if match is not None:
-            x.append(int(match[1]))
-            y.append(int(match[2]))
+            tgt.append(int(match[1][1:]) if match[1] else 0)
+            x.append(int(match[2]))
+            y.append(int(match[3]))
             t.append(ts)
 
     return pd.DataFrame.from_dict({
+        'MarkerTgt': tgt,
         'MarkerX': x,
         'MarkerY': y,
         'Time_LSL': t,
