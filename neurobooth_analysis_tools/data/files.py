@@ -92,21 +92,26 @@ def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[
     return sessions, session_dirs
 
 
-def parse_files(session_path: str) -> List[FileMetadata]:
+def parse_files(session_path: str, skip_on_error: bool = False) -> List[FileMetadata]:
     """Parse the file names present within a Neurobooth session directory."""
     metadata = []
     for f in os.listdir(session_path):
-        if not os.path.isfile(os.path.join(session_path, f)):
-            continue
-        if re.fullmatch(NOTE_FILE_PATTERN, f) is not None:  # Do not handle notes at the moment
-            continue
-        if is_csv(f) or is_xdf(f) or is_log(f):  # Do not handle these files at the moment
-            continue
-        if '_jittered' in f:  # Jitter files should be ignored
-            continue
-        if is_tmp(f) or is_swp(f):  # Do not handle temporary files
-            continue
-        metadata.append(parse_file(session_path, f))
+        try:
+            if not os.path.isfile(os.path.join(session_path, f)):
+                continue
+            if re.fullmatch(NOTE_FILE_PATTERN, f) is not None:  # Do not handle notes at the moment
+                continue
+            if is_csv(f) or is_xdf(f) or is_log(f):  # Do not handle these files at the moment
+                continue
+            if '_jittered' in f:  # Jitter files should be ignored
+                continue
+            if is_tmp(f) or is_swp(f):  # Do not handle temporary files
+                continue
+            metadata.append(parse_file(session_path, f))
+        except FilenameException as e:
+            if skip_on_error:
+                continue
+            raise e
     return metadata
 
 
