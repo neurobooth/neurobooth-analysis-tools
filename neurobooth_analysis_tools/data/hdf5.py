@@ -203,6 +203,7 @@ def extract_eyelink(device: Device, include_event_flags: bool = True) -> pd.Data
         )
     )
     df['Time_LSL'] = device.data.time_stamps
+    df['Target_Distance'] /= 10  # Convert to mm
 
     if include_event_flags:
         df['Flag_Instructions'] = create_instruction_mask(device, device.data.time_stamps)
