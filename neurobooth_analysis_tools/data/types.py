@@ -46,6 +46,7 @@ class NeuroboothTask(Enum):
     SitToStand = 'sit_to_stand_obs'
     TimingTest = 'timing_test_obs'
     TimingTest2 = 'timing_test_obs_2'
+    DefaultTestTask = 'task_obs_1'
 
 
 class NeuroboothDevice(IntEnum):
