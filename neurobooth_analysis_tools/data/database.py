@@ -115,11 +115,16 @@ class DatabaseConnection:
         if use_cache and self.test_subjects is not None:
             return self.test_subjects
 
+        # Test subjects will either be:
+        #   1) missing from the redcap-generated consent table (but present in the subject table), or
+        #   2) flagged as a test subject in the consent table
         query = '''
-        SELECT DISTINCT subject_id
-        FROM rc_participant_and_consent_information
-        WHERE test_subject_boolean
-        ORDER BY subject_id
+        SELECT DISTINCT subj.subject_id
+        FROM subject subj
+        LEFT JOIN rc_participant_and_consent_information pci
+            ON subj.subject_id = pci.subject_id
+        WHERE pci.test_subject_boolean OR pci.subject_id IS NULL
+        ORDER BY subj.subject_id
         '''
 
         DatabaseConnection.wait_for_refresh(self.engine, 'rc_participant_and_consent_information')
