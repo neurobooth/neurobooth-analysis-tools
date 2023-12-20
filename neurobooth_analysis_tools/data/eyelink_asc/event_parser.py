@@ -81,7 +81,12 @@ _parse_fixations = partial(_parse_eye_events_generic, end_code='EFIX')
 _parse_blinks = partial(_parse_eye_events_generic, end_code='EBLINK')
 
 
-def parse_asc(asc_file: str) -> EventData:
+def parse_asc_events(asc_file: str) -> EventData:
+    """
+    Parse events from an event-only EyeLink ASCII file.
+    :param asc_file: The ASCII file to parse (generated with edf2asc -nv -ns)
+    :return: The extracted eye events
+    """
     with open(asc_file, 'r') as f:
         lines = f.readlines()
 
