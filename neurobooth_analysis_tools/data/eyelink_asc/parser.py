@@ -20,7 +20,6 @@ def parse_href(asc_file: str) -> pd.DataFrame:
         ),
         dtype='float64',
     )
-    df['Time_EDF'] /= 1e3  # ms -> s
     return df
 
 
@@ -30,7 +29,7 @@ def href_velocity(df: pd.DataFrame) -> pd.DataFrame:
     :param df: A DataFrame with HREF eye coordinates
     :return: The same DataFrame, augmented with new velocity columns.
     """
-    ts = df['Time_EDF'].to_numpy()
+    ts = df['Time_EDF'].to_numpy() / 1e3  # ms -> s
 
     x, y = df['L_GazeX_HREF'].to_numpy(), df['L_GazeY_HREF'].to_numpy()
     df['L_GazeX_HREF_Vel'], df['L_GazeY_HREF_Vel'] = calc_eye_velocity(x, y, ts)
