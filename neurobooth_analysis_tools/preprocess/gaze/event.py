@@ -31,6 +31,7 @@ class SaccadeDetectionException(Exception):
 
 def detect_gaze_events(
         pos: np.ndarray,
+        vel: np.ndarray,
         ts: np.ndarray,
         vfac: float = 5,
         min_duration: float = 0.016,
@@ -47,6 +48,7 @@ def detect_gaze_events(
     (It is assumed that the eye tracking system provides constant values (e.g., 0s) during blinks
 
     :param pos: Nx2 array of gaze position. First column is x, second column is y.
+    :param vel: Nx2 array of gaze velocity (dva/s). First column is x, second column is y.
     :param ts: Timestamp of each sample (in seconds).
     :param vfac: Relative velocity thresholds; lambda in the paper.
     :param min_duration: Minimum saccade duration (in seconds).
@@ -62,7 +64,6 @@ def detect_gaze_events(
         pos, ts = signal.resample(pos, pos.shape[0], ts, axis=0)
 
     # Calculate and (optionally) smooth velocity
-    vel = np.gradient(pos, ts, axis=0)
     if smooth_velocity:
         vel[:, 0] = _smooth_signal(vel[:, 0], smooth_window_size)
         vel[:, 1] = _smooth_signal(vel[:, 1], smooth_window_size)
