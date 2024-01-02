@@ -47,3 +47,8 @@ def extract_events_ascii(edf_file: str) -> str:
 def extract_href_ascii(edf_file: str) -> str:
     """Extract HREF position and resolution from an EDF file."""
     return run_edf2asc(edf_file, '-t', '-sh', '-s', suffix='_href')
+
+
+def extract_gaze_ascii(edf_file: str) -> str:
+    """Extract HREF position and resolution from an EDF file."""
+    return run_edf2asc(edf_file, '-t', '-s', '-res', suffix='_gaze')

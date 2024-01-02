@@ -198,7 +198,7 @@ def extract_eyelink(device: Device, include_event_flags: bool = True) -> pd.Data
             'R_GazeX', 'R_GazeY', 'R_PupilSize',
             'L_GazeX', 'L_GazeY', 'L_PupilSize',
             'Target_PositionX', 'Target_PositionY', 'Target_Distance',
-            'R_PPD', 'L_PPD',
+            'ResolutionX', 'ResolutionY',
             'Time_EDF', 'Time_NUC'
         )
     )
