@@ -79,7 +79,7 @@ def _extract_data_group(group: Dict, flatten_time_series: bool = False) -> DataG
     )
 
 
-_MARKER_POS_PATTERN = re.compile(r'!V TARGET_POS target(_\d+)? (\d+), (\d+) .*')
+MARKER_POS_PATTERN = re.compile(r'!V TARGET_POS target(_\d+)? (\d+), (\d+) .*')
 
 
 def extract_marker_position(device: Device) -> pd.DataFrame:
@@ -90,7 +90,7 @@ def extract_marker_position(device: Device) -> pd.DataFrame:
 
     tgt, x, y, t = [], [], [], []
     for text, ts in zip(marker.time_series, marker.time_stamps):
-        match = re.match(_MARKER_POS_PATTERN, text)
+        match = re.match(MARKER_POS_PATTERN, text)
         if match is not None:
             tgt.append(int(match[1][1:]) if match[1] else 0)
             x.append(int(match[2]))
