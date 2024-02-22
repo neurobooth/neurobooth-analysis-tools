@@ -28,160 +28,115 @@ class MOTTrial(NamedTuple):
     click_times: np.ndarray
 
 
-def parse_markers(marker: hdf5.DataGroup) -> List[MOTTrial]:
-    """Parse the marker time-series and return structured information for each MOT trial."""
-    return list(parse_markers_iter(marker.time_series, marker.time_stamps))
-
-
 class ParserError(Exception):
     pass
 
 
-class ParserState(Enum):
-    BEGIN = auto()
-    N_TARGET = auto()
-    ANIMATION = auto()
-    CLICKS = auto()
-    COMPLETE = auto()
+def parse_markers(marker: hdf5.DataGroup) -> List[MOTTrial]:
+    """Parse the marker time-series and return structured information for each MOT trial."""
+    markers = marker.time_series
+    timestamps = marker.time_stamps
 
+    # Identify the start and end of each trial
+    trial_start_idx = []
+    trial_end_idx = []
+    for i, marker in enumerate(markers):
+        if re.match(TRIAL_START, marker) is not None:
+            trial_start_idx.append(i)
+        elif re.match(TRIAL_END, marker) is not None:
+            trial_end_idx.append(i)
+    trial_start_idx, trial_end_idx = np.array(trial_start_idx), np.array(trial_end_idx)
 
-class ParserContext:
-    """Stores marker information regarding a trial during parsing. Also handles the parsing logic and state machine."""
-
-    RETURN_TYPE = Optional[MOTTrial]
-
-    def __init__(self):
-        self.state = ParserState.BEGIN
-        self.practice = None
-        self.start_time = None
-        self.animation_end_time = None
-        self.n_targets = None
-        self.circle_id = []
-        self.circle_x = []
-        self.circle_y = []
-        self.circle_ts = []
-        self.click_times = []
-
-    def consume(self, marker: str, ts: float) -> RETURN_TYPE:
-        """
-        Parse a single marker string and advance the parser state.
-
-        The general structure of the marker time-series should be:
-        ...
-        Trial_start (or PracticeTrial_start)
-        number targets
-        !V TARGET_POS (for C circles, we get C of these every animation update.)
-        ...
-        !V TARGET_POS
-        Response_start (for each click)
-        Trial_end (or PracticeTrial_end)
-        ...
-
-        :param marker: The marker string to parse.
-        :param ts: The associated LSL timestamp.
-        :return: If parsing of the trial is complete, the result will be an MOTTrial object.
-            Otherwise, the result will be None.
-        """
-        match self.state:
-            case ParserState.BEGIN:
-                return self.consume_begin(marker, ts)
-            case ParserState.N_TARGET:
-                return self.consume_n_targets(marker, ts)
-            case ParserState.ANIMATION:
-                return self.consume_animation(marker, ts)
-            case ParserState.CLICKS:
-                return self.consume_clicks(marker, ts)
-            case _:
-                raise ParserError(f'Encountered unexpected MOT marker parsing state: {self.state}')
-
-    def consume_begin(self, marker: str, ts: float) -> RETURN_TYPE:
-        """
-        Consume markers until we encounter a trial start marker.
-        """
-        match = re.match(TRIAL_START, marker)
-        if match is None:
-            return None
-
-        self.practice = 'practice' in match[1].lower()
-        self.start_time = ts
-        self.state = ParserState.N_TARGET
-        return None
-
-    def consume_n_targets(self, marker: str, ts: float) -> RETURN_TYPE:
-        """
-        Match a number of targets marker.
-        """
-        match = re.match(N_TARGET, marker)
-        if match is None:
-            raise ParserError(f'Expected to find No. Target marker. Instead found: {marker}')
-
-        self.n_targets = int(match[1])
-        self.state = ParserState.ANIMATION
-        return None
-
-    def consume_animation(self, marker: str, ts: float) -> RETURN_TYPE:
-        """
-        Consume target position markers until we encounter response marker.
-        """
-        match = re.match(hdf5.MARKER_POS_PATTERN, marker)
-        if match is None:
-            self.state = ParserState.CLICKS
-            return self.consume_clicks(marker, ts)
-
-        self.circle_id.append(int(match[1][1:]))
-        self.circle_x.append(int(match[2]))
-        self.circle_y.append(int(match[3]))
-        self.circle_ts.append(ts)
-        self.animation_end_time = ts
-        return None
-
-    def consume_clicks(self, marker: str, ts: float) -> RETURN_TYPE:
-        """
-        Consume response markers until we encounter a trial end marker.
-        """
-        match = re.match(CLICK, marker)
-        if match is None:
-            return self.complete(marker, ts)
-
-        self.click_times.append(ts)
-        return None
-
-    def complete(self, marker: str, ts: float) -> RETURN_TYPE:
-        """
-        Format the context into an MOTTrial object and set the state machine to a completed state.
-        """
-        match = re.match(TRIAL_END, marker)
-        if match is None:
-            raise ParserError(f'Expected to find trial end. Instead found: {marker}')
-
-        self.state = ParserState.COMPLETE
-        return MOTTrial(
-            practice=self.practice,
-            start_time=self.start_time,
-            animation_end_time=self.animation_end_time,
-            end_time=ts,
-            n_targets=self.n_targets,
-            circle_paths=pd.DataFrame.from_dict({
-                'MarkerTgt': self.circle_id,
-                'MarkerX': self.circle_x,
-                'MarkerY': self.circle_x,
-                'Time_LSL': self.circle_ts,
-            }),
-            click_times=np.array(self.click_times),
+    # Validity Checks
+    if len(trial_start_idx) != len(trial_end_idx):
+        raise ParserError(
+            f'Mismatch between the number of trial start markers ({len(trial_start_idx)})'
+            f' and trial end markers ({len(trial_end_idx)})'
         )
+    elif (trial_start_idx >= trial_end_idx).sum() > 0:
+        raise ParserError('Detected trial start occurring after trial end!')
+
+    # Parse each trial
+    return [
+        _parse_markers_trial(markers[start_idx:(end_idx+1)], timestamps[start_idx:(end_idx+1)])
+        for start_idx, end_idx in zip(trial_end_idx, trial_end_idx)
+    ]
 
 
-def parse_markers_iter(markers: np.ndarray, timestamps: np.ndarray) -> Iterator[MOTTrial]:
+def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTrial:
     """
-    Parse the marker time-series and return an iterator over structured information for each MOT trial.
-    :param markers: The series of marker strings for the task.
-    :param timestamps: The associated LSL timestamps of each marker string.
-    :return: An iterator over MOTTrial objects that aggregate trial information from across many markers.
+    Parse a set of marker strings for a single trial.
+    The general structure of the marker time-series for a trial should be:
+    ...
+    Trial_start (or PracticeTrial_start)
+    number targets
+    !V TARGET_POS (for C circles, we get C of these every animation update.)
+    ...
+    !V TARGET_POS
+    Response_start (for each click)
+    Trial_end (or PracticeTrial_end)
+    ...
+
+    :param markers: The marker strings for a single trial.
+    :param timestamps: The associated LSL timestamps.
+    :return: A structured representation of the marker information for the trial.
     """
-    context = ParserContext()  # Each context encapsulates "running" information while parsing over many markers
+    practice = None
+    start_time = None
+    end_time = None
+    n_targets = None
+    circle_id = []
+    circle_x = []
+    circle_y = []
+    circle_ts = []
+    click_times = []
+
     for marker, ts in zip(markers, timestamps):
-        result = context.consume(marker, ts)
-        if result is not None:  # Parsing of the trial is complete
-            yield result
-            context = ParserContext()  # Get a new context for the next trial
+        # Detect trial start
+        match = re.match(TRIAL_START, marker)
+        if match is not None:
+            practice = 'practice' in match[1].lower()
+            start_time = ts
+            continue
 
+        # Detect number of targets marker
+        match = re.match(N_TARGET, marker)
+        if match is not None:
+            n_targets = int(match[1])
+            continue
+
+        # Detect marker position updates
+        match = re.match(hdf5.MARKER_POS_PATTERN, marker)
+        if match is not None:
+            circle_id.append(int(match[1][1:]))
+            circle_x.append(int(match[2]))
+            circle_y.append(int(match[3]))
+            circle_ts.append(ts)
+            continue
+
+        # Detect clicks
+        match = re.match(CLICK, marker)
+        if match is not None:
+            click_times.append(ts)
+            continue
+
+        # Detect trial end
+        match = re.match(TRIAL_END, marker)
+        if match is not None:
+            end_time = ts
+            break
+
+    return MOTTrial(
+        practice=practice,
+        start_time=start_time,
+        animation_end_time=max(circle_ts),
+        end_time=end_time,
+        n_targets=n_targets,
+        circle_paths=pd.DataFrame.from_dict({
+            'MarkerTgt': circle_id,
+            'MarkerX': circle_x,
+            'MarkerY': circle_x,
+            'Time_LSL': circle_ts,
+        }),
+        click_times=np.array(click_times),
+    )

@@ -72,8 +72,13 @@ def plot_clicks(
         gaze_pos = gaze_pos.loc[gaze_pos['Time_LSL'] > marker_data.animation_end_time]
         _plot_gaze(ax, gaze_pos, gaze_linewidth)
 
-    # TODO: Mouse
-    # TODO: Denote clicks
+    if mouse_pos is not None:
+        ax.plot(mouse_pos['PosX'], mouse_pos['PosY'], color='b', linewidth=mouse_linewidth)
+        click_mask = mouse_pos['Click'] == 1
+        ax.scatter(
+            mouse_pos.loc[click_mask, 'PosX'], mouse_pos.loc[click_mask, 'PosY'],
+            s=(endpoint_marker_area / 2), color='b',
+        )
 
     ax.set_title(f"{'Practice: ' if marker_data.practice else ''}{marker_data.n_targets} dots")
     _configure_trial_plot_axes(ax, margin)
