@@ -35,18 +35,12 @@ def plot_marker_animation(
         gaze_linewidth: float = 0.5,
         margin: float = 20,
 ) -> None:
-    circle_ids = marker_data.circle_paths['MarkerTgt'].unique()
-    for cid in sorted(circle_ids):
-        color = target_color if cid < marker_data.n_targets else nontarget_color
-        paths = marker_data.circle_paths.loc[marker_data.circle_paths['MarkerTgt'] == cid]
-        ax.plot(paths['MarkerX'], paths['MarkerY'], color=color, linewidth=path_linewidth)
-        ax.scatter(paths['MarkerX'].iloc[-1], paths['MarkerY'].iloc[-1], color=color, s=endpoint_marker_area)
+    _plot_marker_trajectories(ax, marker_data, path_linewidth, endpoint_marker_area, target_color, nontarget_color)
 
     if gaze_pos is not None:
         gaze_pos = gaze_pos.loc[gaze_pos['Time_LSL'] <= marker_data.animation_end_time]
         _plot_gaze(ax, gaze_pos, gaze_linewidth)
 
-    ax.set_title(f"{'Practice: ' if marker_data.practice else ''}{marker_data.n_targets} dots")
     _configure_trial_plot_axes(ax, margin)
 
 
@@ -62,11 +56,7 @@ def plot_clicks(
         mouse_linewidth: float = 0.5,
         margin: float = 20,
 ) -> None:
-    circle_ids = marker_data.circle_paths['MarkerTgt'].unique()
-    for cid in sorted(circle_ids):
-        color = target_color if cid < marker_data.n_targets else nontarget_color
-        paths = marker_data.circle_paths.loc[marker_data.circle_paths['MarkerTgt'] == cid]
-        ax.scatter(paths['MarkerX'].iloc[-1], paths['MarkerY'].iloc[-1], color=color, s=endpoint_marker_area)
+    _plot_marker_trajectories(ax, marker_data, None, endpoint_marker_area, target_color, nontarget_color)
 
     if gaze_pos is not None:
         gaze_pos = gaze_pos.loc[gaze_pos['Time_LSL'] > marker_data.animation_end_time]
@@ -80,7 +70,6 @@ def plot_clicks(
             s=(endpoint_marker_area / 2), color='b',
         )
 
-    ax.set_title(f"{'Practice: ' if marker_data.practice else ''}{marker_data.n_targets} dots")
     _configure_trial_plot_axes(ax, margin)
 
 
@@ -89,6 +78,27 @@ def _configure_trial_plot_axes(ax: plt.Axes, margin: float) -> None:
     ax.set_yticks(np.linspace(*X_RANGE, 5))
     ax.set_xlim([X_RANGE[0] - margin, X_RANGE[1] + margin])
     ax.set_ylim([Y_RANGE[0] - margin, Y_RANGE[1] + margin])
+
+
+def _plot_marker_trajectories(
+        ax: plt.Axes,
+        marker_data: MOTTrial,
+        path_linewidth: Optional[float] = 1.5,
+        target_color: Any = '#55a868',
+        nontarget_color: Any = '#ccb974',
+        endpoint_marker_area: float = 25,
+        set_title: bool = True,
+) -> None:
+    circle_ids = marker_data.circle_paths['MarkerTgt'].unique()
+    for cid in sorted(circle_ids):
+        color = target_color if cid < marker_data.n_targets else nontarget_color
+        paths = marker_data.circle_paths.loc[marker_data.circle_paths['MarkerTgt'] == cid]
+        if path_linewidth is not None:
+            ax.plot(paths['MarkerX'], paths['MarkerY'], color=color, linewidth=path_linewidth)
+        ax.scatter(paths['MarkerX'].iloc[-1], paths['MarkerY'].iloc[-1], color=color, s=endpoint_marker_area)
+
+    if set_title:
+        ax.set_title(f"{'Practice: ' if marker_data.practice else ''}{marker_data.n_targets} dots")
 
 
 def _plot_gaze(ax: plt.Axes, gaze_pos: pd.DataFrame, linewidth: float) -> None:
