@@ -5,7 +5,7 @@ Tools for visualizing marker position and mouse/eye position during the multiple
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Optional, Any
+from typing import List, Optional, Any
 
 from neurobooth_analysis_tools.task.mot import MOTTrial
 
@@ -38,7 +38,10 @@ def plot_marker_animation(
     _plot_marker_trajectories(ax, marker_data, path_linewidth, endpoint_marker_area, target_color, nontarget_color)
 
     if gaze_pos is not None:
-        gaze_pos = gaze_pos.loc[gaze_pos['Time_LSL'] <= marker_data.animation_end_time]
+        gaze_pos = gaze_pos.loc[
+            (gaze_pos['Time_LSL'] >= marker_data.start_time) &
+            (gaze_pos['Time_LSL'] <= marker_data.animation_end_time)
+        ]
         _plot_gaze(ax, gaze_pos, gaze_linewidth)
 
     _configure_trial_plot_axes(ax, margin)
@@ -59,12 +62,20 @@ def plot_clicks(
     _plot_marker_trajectories(ax, marker_data, None, endpoint_marker_area, target_color, nontarget_color)
 
     if gaze_pos is not None:
-        gaze_pos = gaze_pos.loc[gaze_pos['Time_LSL'] > marker_data.animation_end_time]
+        gaze_pos = gaze_pos.loc[
+            (gaze_pos['Time_LSL'] >= marker_data.animation_end_time) &
+            (gaze_pos['Time_LSL'] <= marker_data.end_time)
+        ]
         _plot_gaze(ax, gaze_pos, gaze_linewidth)
 
     if mouse_pos is not None:
+        mouse_pos = mouse_pos.loc[
+            (mouse_pos['Time_LSL'] >= marker_data.animation_end_time) &
+            (mouse_pos['Time_LSL'] <= marker_data.end_time)
+            ]
+
         ax.plot(mouse_pos['PosX'], mouse_pos['PosY'], color='b', linewidth=mouse_linewidth)
-        click_mask = mouse_pos['Click'] == 1
+        click_mask = mouse_pos['MouseState'] == 'Click'
         ax.scatter(
             mouse_pos.loc[click_mask, 'PosX'], mouse_pos.loc[click_mask, 'PosY'],
             s=(endpoint_marker_area / 2), color='b',
@@ -75,7 +86,7 @@ def plot_clicks(
 
 def _configure_trial_plot_axes(ax: plt.Axes, margin: float) -> None:
     ax.set_xticks(np.linspace(*X_RANGE, 5))
-    ax.set_yticks(np.linspace(*X_RANGE, 5))
+    ax.set_yticks(np.linspace(*Y_RANGE, 5))
     ax.set_xlim([X_RANGE[0] - margin, X_RANGE[1] + margin])
     ax.set_ylim([Y_RANGE[0] - margin, Y_RANGE[1] + margin])
 
@@ -84,9 +95,9 @@ def _plot_marker_trajectories(
         ax: plt.Axes,
         marker_data: MOTTrial,
         path_linewidth: Optional[float] = 1.5,
+        endpoint_marker_area: float = 25,
         target_color: Any = '#55a868',
         nontarget_color: Any = '#ccb974',
-        endpoint_marker_area: float = 25,
         set_title: bool = True,
 ) -> None:
     circle_ids = marker_data.circle_paths['MarkerTgt'].unique()

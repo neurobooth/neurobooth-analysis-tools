@@ -3,8 +3,7 @@ Task-specific processing for multiple object tracking (MOT).
 """
 
 import re
-from typing import NamedTuple, List, Iterator, Optional, Tuple
-from enum import Enum, auto
+from typing import NamedTuple, List
 import numpy as np
 import pandas as pd
 from neurobooth_analysis_tools.data import hdf5
@@ -59,7 +58,7 @@ def parse_markers(marker: hdf5.DataGroup) -> List[MOTTrial]:
     # Parse each trial
     return [
         _parse_markers_trial(markers[start_idx:(end_idx+1)], timestamps[start_idx:(end_idx+1)])
-        for start_idx, end_idx in zip(trial_end_idx, trial_end_idx)
+        for start_idx, end_idx in zip(trial_start_idx, trial_end_idx)
     ]
 
 
@@ -129,7 +128,7 @@ def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTria
     return MOTTrial(
         practice=practice,
         start_time=start_time,
-        animation_end_time=max(circle_ts),
+        animation_end_time=max([start_time, *circle_ts]),
         end_time=end_time,
         n_targets=n_targets,
         circle_paths=pd.DataFrame.from_dict({
