@@ -134,7 +134,7 @@ def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTria
         circle_paths=pd.DataFrame.from_dict({
             'MarkerTgt': circle_id,
             'MarkerX': circle_x,
-            'MarkerY': circle_x,
+            'MarkerY': circle_y,
             'Time_LSL': circle_ts,
         }),
         click_times=np.array(click_times),
