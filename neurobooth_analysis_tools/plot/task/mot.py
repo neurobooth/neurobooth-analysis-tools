@@ -26,7 +26,7 @@ def make_trial_grid(plot_size: float = 4) -> (plt.Figure, List[plt.Axes]):
     plot_height = plot_size
     plot_width = plot_size * SCREEN_RATIO
 
-    fig, axs = plt.subplots(5, 4, figsize=(4*plot_height, 5*plot_width))
+    fig, axs = plt.subplots(4, 5, figsize=(5*plot_height, 4*plot_width))
     return fig, axs.flatten()
 
 
@@ -50,8 +50,8 @@ def plot_marker_animation(
         ]
         _plot_gaze(ax, 'R', gaze_pos, gaze_linewidth)
         _plot_gaze(ax, 'L', gaze_pos, gaze_linewidth)
+        ax.legend()
 
-    ax.legend()
     _configure_trial_plot_axes(ax, margin)
 
 
