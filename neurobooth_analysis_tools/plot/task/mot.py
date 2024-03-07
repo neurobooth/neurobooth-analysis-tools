@@ -22,7 +22,7 @@ SCREEN_RATIO = (X_RANGE[1]-X_RANGE[0]) / (Y_RANGE[1]-Y_RANGE[0])
 GAZE_SOS_COEF = butter(7, 100 / (1000 / 2), btype='lowpass', output='sos')
 
 
-def make_trial_grid(plot_size: float = 4, titles: bool = False) -> (plt.Figure, List[plt.Axes]):
+def make_trial_grid(plot_size: float = 4) -> (plt.Figure, List[plt.Axes]):
     plot_height = plot_size
     plot_width = plot_size * SCREEN_RATIO
 
