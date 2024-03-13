@@ -31,6 +31,7 @@ class DatabaseConnection:
     demographic: pd.DataFrame = None
     clinical: pd.DataFrame = None
     scales: pd.DataFrame = None
+    prom_vaq: pd.DataFrame = None
     test_subjects: np.ndarray = None
 
     def __init__(self, connection_info: DatabaseConnectionInfo):
@@ -45,6 +46,7 @@ class DatabaseConnection:
             'rc_demographic_clean',
             'rc_clinical_clean',
             'rc_ataxia_pd_scales_clean',
+            'rc_visual_activities_questionnaire',
         )
         self.session = tables.pop('rc_visit_dates')
         session_view = self.session[['subject_id', 'redcap_event_name', 'neurobooth_visit_dates']]
@@ -53,11 +55,13 @@ class DatabaseConnection:
             'rc_demographic_clean': 'end_time_demographic',
             'rc_clinical_clean': 'end_time_clinical',
             'rc_ataxia_pd_scales_clean': 'end_time_ataxia_pd_scales',
+            'rc_visual_activities_questionnaire': 'end_time_visual_activities_questionnaire',
         }
         new_column_prefix = {
             'rc_demographic_clean': 'demographic',
             'rc_clinical_clean': 'clinical',
             'rc_ataxia_pd_scales_clean': 'scales',
+            'rc_visual_activities_questionnaire': 'vaq',
         }
 
         tables = {
@@ -72,6 +76,7 @@ class DatabaseConnection:
         self.demographic = tables['rc_demographic_clean']
         self.clinical = tables['rc_clinical_clean']
         self.scales = tables['rc_ataxia_pd_scales_clean']
+        self.prom_vaq = tables['rc_visual_activities_questionnaire']
 
     def download_tables(self, *table_names: str) -> Dict[str, pd.DataFrame]:
         """Download and return the specified tables from the database"""
