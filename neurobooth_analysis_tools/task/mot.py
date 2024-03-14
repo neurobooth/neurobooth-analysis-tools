@@ -88,6 +88,7 @@ def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTria
     circle_x = []
     circle_y = []
     circle_ts = []
+    circle_ts_lsl = []
     click_times = []
 
     for marker, ts in zip(markers, timestamps):
@@ -110,7 +111,8 @@ def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTria
             circle_id.append(int(match[1][1:]))
             circle_x.append(int(match[2]))
             circle_y.append(int(match[3]))
-            circle_ts.append(ts)
+            circle_ts.append(float(match[4]))
+            circle_ts_lsl.append(ts)
             continue
 
         # Detect clicks
@@ -135,7 +137,8 @@ def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTria
             'MarkerTgt': circle_id,
             'MarkerX': circle_x,
             'MarkerY': circle_y,
-            'Time_LSL': circle_ts,
+            'Time_STM': circle_ts,
+            'Time_LSL': circle_ts_lsl,
         }),
         click_times=np.array(click_times),
     )
