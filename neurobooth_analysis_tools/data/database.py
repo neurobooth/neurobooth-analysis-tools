@@ -27,6 +27,7 @@ class DatabaseConnectionInfo(NamedTuple):
 
 class DatabaseConnection:
     """Load and provide easy access to Neuropheno subject demographics and clinical information."""
+    subject: pd.DataFrame = None
     session: pd.DataFrame = None
     demographic: pd.DataFrame = None
     clinical: pd.DataFrame = None
@@ -43,6 +44,7 @@ class DatabaseConnection:
     def download(self) -> None:
         """Download tables likely to be useful for analysis and fuzzy-join them with sessions by date."""
         tables = self.download_tables(
+            'subject',
             'rc_visit_dates',
             'rc_demographic_clean',
             'rc_clinical_clean',
@@ -50,6 +52,7 @@ class DatabaseConnection:
             'rc_visual_activities_questionnaire',
             'rc_prom_ataxia',
         )
+        self.subject = tables.pop('subject')
         self.session = tables.pop('rc_visit_dates')
         session_view = self.session[['subject_id', 'redcap_event_name', 'neurobooth_visit_dates']]
 
