@@ -59,7 +59,7 @@ class DatabaseConnection:
         join_keys = {
             'rc_demographic_clean': 'end_time_demographic',
             'rc_clinical_clean': 'end_time_clinical',
-            'rc_ataxia_pd_scales_clean': 'end_time_ataxia_pd_scales',
+            'rc_ataxia_pd_scales_clean': 'visit_date',
             'rc_visual_activities_questionnaire': 'end_time_visual_activities_questionnaire',
             'rc_prom_ataxia': 'end_time_prom_ataxia',
         }
