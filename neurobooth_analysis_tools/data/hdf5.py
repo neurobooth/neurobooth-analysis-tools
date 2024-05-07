@@ -15,6 +15,12 @@ from neurobooth_analysis_tools.data.types import DataException
 from neurobooth_analysis_tools.data.files import FILE_PATH, resolve_filename
 
 
+# Module level variable controlling behavior for multiple task/instruction periods
+# If True, mask variables will only correspond to the last period.
+# If False, mask variables will only correspond to all task periods.
+LAST_ONLY: bool = True
+
+
 class DataGroup(NamedTuple):
     """Common substructure presence for 'device_data' and 'marker' in Neurobooth HDF5 files."""
     info: Dict
@@ -156,36 +162,39 @@ extract_instruction_boundaries = partial(
 )
 
 
-def create_task_mask(
-        device: Device,
+def create_interval_mask(
         time_stamps: np.ndarray,
-        allow_multiple: bool = True,
+        starts: np.ndarray,
+        ends: np.ndarray,
+        last_only: bool
 ) -> np.ndarray:
+    """
+    Create a boolean mask that is True in-between the given interval boundaries.
+    :param time_stamps: Time stamps corresponding to each sample.
+    :param starts: Array of interval start times.
+    :param ends: Array of interval end times.
+    :param last_only: If True, only use the last interval if there are multiple disjoint intervals.
+    :return: A boolean mask corresponding to the interval boundaries.
+    """
+    if last_only and starts.shape[0] > 1:
+        starts, ends = starts[[-1]], ends[[-1]]
+
+    mask = np.zeros(time_stamps.shape, dtype=bool)
+    for start, end in zip(starts, ends):
+        mask[(time_stamps >= start) & (time_stamps <= end)] = True
+    return mask
+
+
+def create_task_mask(device: Device, time_stamps: np.ndarray) -> np.ndarray:
     """Create a Boolean mask for the given timestamps indicating task performance."""
     starts, ends = extract_task_boundaries(device)
-    if not allow_multiple and starts.shape[0] > 1:
-        raise DataException("Multiple task periods detected.")
-
-    mask = np.zeros(time_stamps.shape, dtype=bool)
-    for start, end in zip(starts, ends):
-        mask[(time_stamps >= start) & (time_stamps <= end)] = True
-    return mask
+    return create_interval_mask(time_stamps, starts, ends, last_only=LAST_ONLY)
 
 
-def create_instruction_mask(
-        device: Device,
-        time_stamps: np.ndarray,
-        allow_multiple: bool = True,
-) -> np.ndarray:
+def create_instruction_mask(device: Device, time_stamps: np.ndarray) -> np.ndarray:
     """Create a Boolean mask for the given timestamps indicating the instruction delivery period."""
     starts, ends = extract_instruction_boundaries(device)
-    if not allow_multiple and starts.shape[0] > 1:
-        raise DataException("Multiple instruction periods detected.")
-
-    mask = np.zeros(time_stamps.shape, dtype=bool)
-    for start, end in zip(starts, ends):
-        mask[(time_stamps >= start) & (time_stamps <= end)] = True
-    return mask
+    return create_interval_mask(time_stamps, starts, ends, last_only=LAST_ONLY)
 
 
 def extract_eyelink(device: Device, include_event_flags: bool = True) -> pd.DataFrame:
