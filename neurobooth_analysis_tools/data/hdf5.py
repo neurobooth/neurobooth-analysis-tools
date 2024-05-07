@@ -18,7 +18,7 @@ from neurobooth_analysis_tools.data.files import FILE_PATH, resolve_filename
 # Module level variable controlling behavior for multiple task/instruction periods
 # If True, mask variables will only correspond to the last period.
 # If False, mask variables will only correspond to all task periods.
-LAST_ONLY: bool = True
+LAST_ONLY: bool = False
 
 
 class DataGroup(NamedTuple):
