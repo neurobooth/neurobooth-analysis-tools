@@ -43,6 +43,7 @@ class DatabaseConnection:
 
     def download(self) -> None:
         """Download tables likely to be useful for analysis and fuzzy-join them with sessions by date."""
+        # Download Tables
         tables = self.download_tables(
             'subject',
             'rc_visit_dates',
@@ -52,25 +53,32 @@ class DatabaseConnection:
             'rc_visual_activities_questionnaire',
             'rc_prom_ataxia',
         )
+
+        # Isolate tables that serve as the "left" side of the fuzzy joins.
         self.subject = tables.pop('subject')
         self.session = tables.pop('rc_visit_dates')
         session_view = self.session[['subject_id', 'redcap_event_name', 'neurobooth_visit_dates']]
 
+        # Do a fuzzy redcap event join for clinical
+        self.clinical = tables.pop('rc_clinical_clean')
+        self.clinical = fuzzy_join_redcap_event(
+            session_view, self.clinical,
+            hard_on=['subject_id'], offset_column_name='clinical_offset_visits', how='left',
+        )
+
+        # Do a fuzzy date join for everything else
         join_keys = {
             'rc_demographic_clean': 'end_time_demographic',
-            'rc_clinical_clean': 'end_time_clinical',
             'rc_ataxia_pd_scales_clean': 'visit_date',
             'rc_visual_activities_questionnaire': 'end_time_visual_activities_questionnaire',
             'rc_prom_ataxia': 'end_time_prom_ataxia',
         }
         new_column_prefix = {
             'rc_demographic_clean': 'demographic',
-            'rc_clinical_clean': 'clinical',
             'rc_ataxia_pd_scales_clean': 'scales',
             'rc_visual_activities_questionnaire': 'vaq',
             'rc_prom_ataxia': 'prom_ataxia',
         }
-
         tables = {
             name: fuzzy_join_date(
                 session_view, table,
@@ -81,7 +89,6 @@ class DatabaseConnection:
             for name, table in tables.items()
         }
         self.demographic = tables['rc_demographic_clean']
-        self.clinical = tables['rc_clinical_clean']
         self.scales = tables['rc_ataxia_pd_scales_clean']
         self.prom_vaq = tables['rc_visual_activities_questionnaire']
         self.prom_ataxia = tables['rc_prom_ataxia']
@@ -144,6 +151,50 @@ class DatabaseConnection:
         with self.engine.connect() as connection:
             self.test_subjects = pd.read_sql(query, connection).convert_dtypes().to_numpy(dtype='U').squeeze()
         return self.test_subjects
+
+
+def fuzzy_join_redcap_event(
+        left_df: pd.DataFrame,
+        right_df: pd.DataFrame,
+        hard_on: List[str],
+        offset_column_name: str = 'Offset_Visits',
+        **kwargs,
+) -> pd.DataFrame:
+    """
+    Do a fuzzy join based redcap_event_name columns, where the closest vist is selected.
+    Matching is only done where the event in the right dataframe is the same or earlier session than the left dataframe.
+    Redcap event strings are expected to follow the form vX_arm_Y, where X is the sequence identifier of interest.
+
+    :param left_df: The left dataframe in the join
+    :param right_df: The right dataframe in the join
+    :param hard_on: Any non-fuzzy join conditions
+    :param offset_column_name:  The name of the column that will contain the calculated visit offset
+    :param kwargs: Any kwargs that should be passed on to the join (e.g., 'how' to specify join type)
+    :return: The joined dataframe, with an added column for the separation of the joined redcap events.
+    """
+    left_df, right_df = left_df.copy(), right_df.copy()
+
+    def extract_visit_num(df: pd.DataFrame) -> pd.Series:
+        return df['redcap_event_name'].str.extract(r'v(\d+)_arm.*', expand=False).astype('Int32')
+    left_df['__Visit_Num_L__'] = extract_visit_num(left_df)
+    right_df['__Visit_Num_R__'] = extract_visit_num(right_df)
+
+    # Perform hard portion of join
+    possible_matches = pd.merge(left_df, right_df, on=hard_on, **kwargs)
+
+    # Calculate number of visits (signed) between each redcap event
+    possible_matches[offset_column_name] = possible_matches['__Visit_Num_L__'] - possible_matches['__Visit_Num_R__']
+
+    # Rank possible matches based on proximity; Only look at positive offset
+    possible_matches = possible_matches.loc[possible_matches[offset_column_name] >= 0].copy()
+    possible_matches['__Rank__'] = possible_matches \
+        .groupby([*hard_on, '__Visit_Num_L__'])[offset_column_name] \
+        .rank(method='min', na_option='bottom')
+
+    # Only keep the best matches (rank 1)
+    mask = possible_matches['__Rank__'] == 1
+    possible_matches = possible_matches.loc[mask]
+    return possible_matches.drop(columns=['__Rank__', '__Visit_Num_R__', '__Visit_Num_L__'])  # No longer needed
 
 
 def fuzzy_join_date(
