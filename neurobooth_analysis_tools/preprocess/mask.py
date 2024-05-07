@@ -4,7 +4,26 @@ Functions for working with Boolean and ascending integer masks.
 
 
 import numpy as np
+from typing import List
 
+
+def find_continguous_masks(mask: np.ndarray) -> List[np.ndarray]:
+    """Detect contiguous regions in a mask and return a list containing rach region."""
+    edges = detect_edges(mask, include_endpoints=True)
+    starts, ends = edges[:-1], edges[1:]
+
+    # Remove Zero regions
+    ends = [e for (s, e) in zip(starts, ends) if mask[s]]
+    starts = [s for s in starts if mask[s]]
+
+    if len(edges) <= 1:  # 0 or 1 contiguous regions
+        return [mask]
+
+    # Generate list of submasks
+    masks = [np.zeros_like(mask) for _ in starts]
+    for mask_, start, end in zip(masks, starts, ends):
+        mask_[start:end] = mask[start:end]
+    return masks
 
 def detect_edges(mask: np.ndarray, include_endpoints=False) -> np.ndarray:
     """Convenience function to select an appropriate implementation based on the mask data type"""
