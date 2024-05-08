@@ -218,6 +218,7 @@ def fuzzy_join_date(
     :param kwargs: Any kwargs that should be passed on to the join (e.g., 'how' to specify join type)
     :return: The joined dataframe, with an added column for the separation of the joined dates.
     """
+    right_df = right_df.dropna(subset=fuzzy_on_right)
     possible_matches = pd.merge(left_df, right_df, on=hard_on, **kwargs)
 
     # Calculate number of days (signed) between each date column in the fuzzy join
