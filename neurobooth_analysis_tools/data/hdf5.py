@@ -123,8 +123,20 @@ def extract_marker_event_time(device: Device, event_prefix: str) -> np.ndarray:
     return marker.time_stamps[mask]
 
 
-def extract_event_boundaries(device: Device, start_prefixes: List[str], end_prefixes: List[str]) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract the times corresponding to the start and end of an event (based on the specified event prefixes)"""
+def extract_event_boundaries(
+        device: Device,
+        start_prefixes: List[str],
+        end_prefixes: List[str],
+        validate: bool = True,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Extract the times corresponding to the start and end of an event (based on the specified event prefixes)
+    :param device: The device structure containing the marker series of interest
+    :param start_prefixes: Consider the marker an event start if it starts with one of the provided strings
+    :param end_prefixes: Consider the marker an event ebd if it starts with one of the provided strings
+    :param validate: If true, raise an exception there are no events, or if event boundaries are mismatched.
+    :returns: (starts, ends) LSL timestamps corresponding to event start markers and end markers
+    """
     start = np.concatenate([
         extract_marker_event_time(device, start_prefix)
         for start_prefix in start_prefixes
@@ -134,9 +146,8 @@ def extract_event_boundaries(device: Device, start_prefixes: List[str], end_pref
         for end_prefix in end_prefixes
     ], axis=0)
 
-    sort_idx = np.argsort(start)
-    start = start[sort_idx]
-    end = end[sort_idx]
+    if not validate:
+        return start, end
 
     n_start, n_end = start.shape[0], end.shape[0]
     if n_start == 0 or n_end == 0:
