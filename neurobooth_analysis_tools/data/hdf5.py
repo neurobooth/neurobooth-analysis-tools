@@ -160,6 +160,11 @@ extract_instruction_boundaries = partial(
     start_prefixes=['Intructions_start', 'Intructions-continue-repeat_start', 'inst-continue-repeat_start'],
     end_prefixes=['Intructions_end', 'Intructions-continue-repeat_end', 'inst-continue-repeat_end'],
 )
+extract_trial_boundaries = partial(
+    extract_event_boundaries,
+    start_prefixes=['PracticeTrial_start', 'Trial_start'],
+    end_prefixes=['PracticeTrial_end', 'Trial_end'],
+)
 
 
 def create_interval_mask(
