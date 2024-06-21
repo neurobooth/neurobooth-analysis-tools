@@ -130,7 +130,7 @@ def _parse_markers_trial(markers: np.ndarray, timestamps: np.ndarray) -> MOTTria
     return MOTTrial(
         practice=practice,
         start_time=start_time,
-        animation_end_time=max([start_time, *circle_ts]),
+        animation_end_time=max([start_time, *circle_ts_lsl]),
         end_time=end_time,
         n_targets=n_targets,
         circle_paths=pd.DataFrame.from_dict({
