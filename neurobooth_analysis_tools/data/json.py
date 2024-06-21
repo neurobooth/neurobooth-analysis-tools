@@ -15,7 +15,7 @@ class IPhoneMetadata(NamedTuple):
     ios_version: str
     app_version: str
     device_id: str
-    device_type: str  # See https://www.theiphonewiki.com/wiki/Models
+    device_type: str  # See https://gist.github.com/adamawolf/3048717
 
 
 class IPhoneJsonResult(NamedTuple):
