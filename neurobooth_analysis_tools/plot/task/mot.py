@@ -68,6 +68,8 @@ def plot_clicks(
         margin: float = 20,
 ) -> None:
     _plot_marker_trajectories(ax, marker_data, None, endpoint_marker_area, target_color, nontarget_color)
+    duration = marker_data.end_time - marker_data.animation_end_time
+    ax.set_title(f'{ax.get_title()} ({duration:.1f} s)')
 
     if gaze_pos is not None:
         gaze_pos = gaze_pos.loc[
