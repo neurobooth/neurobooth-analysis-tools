@@ -30,7 +30,10 @@ def main() -> None:
 def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
     """Create a list of metadata objects for data files that match conditions specified on the command line."""
     _, session_dirs = discover_session_directories(args.source)
-    metadata = process_map(parse_files, session_dirs, desc="Parsing File Names", unit='sessions', chunksize=1)
+    parse_files_no_error = partial(parse_files, skip_on_error=True)
+    metadata = process_map(
+        parse_files_no_error, session_dirs, desc="Parsing File Names", unit='sessions', chunksize=1
+    )
     metadata = chain(*metadata)  # Flatten list of lists
 
     if args.hdf5_only:
