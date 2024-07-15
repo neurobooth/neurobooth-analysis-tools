@@ -34,6 +34,10 @@ class DatabaseConnection:
     scales: pd.DataFrame = None
     prom_vaq: pd.DataFrame = None
     prom_ataxia: pd.DataFrame = None
+    prom_dis: pd.DataFrame = None
+    prom_cpib: pd.DataFrame = None
+    prom_nqol_cognitive: pd.DataFrame = None
+    prom_nqol_fatigue: pd.DataFrame = None
     test_subjects: np.ndarray = None
 
     def __init__(self, connection_info: DatabaseConnectionInfo):
@@ -52,6 +56,10 @@ class DatabaseConnection:
             'rc_ataxia_pd_scales_clean',
             'rc_visual_activities_questionnaire',
             'rc_prom_ataxia',
+            'rc_dysarthria_impact_scale',
+            'rc_communicative_participation_item_bank',
+            'rc_neuro_qol_cognitive_function_short_form',
+            'rc_neuro_qol_fatigue_short_form',
         )
 
         # Isolate tables that serve as the "left" side of the fuzzy joins.
@@ -72,12 +80,20 @@ class DatabaseConnection:
             'rc_ataxia_pd_scales_clean': 'visit_date',
             'rc_visual_activities_questionnaire': 'end_time_visual_activities_questionnaire',
             'rc_prom_ataxia': 'end_time_prom_ataxia',
+            'rc_dysarthria_impact_scale': 'end_time_dysarthria_impact_scale',
+            'rc_communicative_participation_item_bank': 'end_time_communicative_participation_item_bank',
+            'rc_neuro_qol_cognitive_function_short_form': 'end_time_neuro_qol_cognitive_function_short_form',
+            'rc_neuro_qol_fatigue_short_form': 'end_time_neuro_qol_fatigue_short_form',
         }
         new_column_prefix = {
             'rc_demographic_clean': 'demographic',
             'rc_ataxia_pd_scales_clean': 'scales',
             'rc_visual_activities_questionnaire': 'vaq',
             'rc_prom_ataxia': 'prom_ataxia',
+            'rc_dysarthria_impact_scale': 'dis',
+            'rc_communicative_participation_item_bank': 'cpib',
+            'rc_neuro_qol_cognitive_function_short_form': 'nqol_cognitive',
+            'rc_neuro_qol_fatigue_short_form': 'nqol_fatigue',
         }
         tables = {
             name: fuzzy_join_date(
@@ -92,6 +108,10 @@ class DatabaseConnection:
         self.scales = tables['rc_ataxia_pd_scales_clean']
         self.prom_vaq = tables['rc_visual_activities_questionnaire']
         self.prom_ataxia = tables['rc_prom_ataxia']
+        self.prom_dis = tables['rc_dysarthria_impact_scale']
+        self.prom_cpib = tables['rc_communicative_participation_item_bank']
+        self.prom_nqol_cognitive = tables['rc_neuro_qol_cognitive_function_short_form']
+        self.prom_nqol_fatigue = tables['rc_neuro_qol_fatigue_short_form']
 
     def download_tables(self, *table_names: str) -> Dict[str, pd.DataFrame]:
         """Download and return the specified tables from the database"""
