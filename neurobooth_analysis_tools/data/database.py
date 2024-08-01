@@ -38,6 +38,15 @@ class DatabaseConnection:
     prom_cpib: pd.DataFrame = None
     prom_nqol_cognitive: pd.DataFrame = None
     prom_nqol_fatigue: pd.DataFrame = None
+    prom_nqol_sleep_disturbance: pd.DataFrame = None
+    prom_nqol_anxiety: pd.DataFrame = None
+    prom_nqol_depression: pd.DataFrame = None
+    prom_nqol_emotional_dyscontrol: pd.DataFrame = None
+    prom_nqol_lower_extremity: pd.DataFrame = None
+    prom_nqol_upper_extremity: pd.DataFrame = None
+    prom_nqol_social_role_participation: pd.DataFrame = None
+    prom_nqol_wellbeing: pd.DataFrame = None
+
     test_subjects: np.ndarray = None
 
     def __init__(self, connection_info: DatabaseConnectionInfo):
@@ -58,8 +67,16 @@ class DatabaseConnection:
             'rc_prom_ataxia',
             'rc_dysarthria_impact_scale',
             'rc_communicative_participation_item_bank',
+            'rc_neuro_qol_anxiety_short_form',
             'rc_neuro_qol_cognitive_function_short_form',
+            'rc_neuro_qol_depression_short_form',
+            'rc_neuro_qol_emotional_dyscontrol_short_form',
             'rc_neuro_qol_fatigue_short_form',
+            'rc_neuro_qol_le_short_form',
+            'rc_neuro_qol_ue_short_form',
+            'rc_neuro_qol_participate_social_roles_short_form',
+            'rc_neuro_qol_positive_affect_and_wellbeing_short_form',
+            'rc_neuro_qol_sleep_disturbance_short_form',
         )
 
         # Isolate tables that serve as the "left" side of the fuzzy joins.
@@ -82,8 +99,16 @@ class DatabaseConnection:
             'rc_prom_ataxia': 'end_time_prom_ataxia',
             'rc_dysarthria_impact_scale': 'end_time_dysarthria_impact_scale',
             'rc_communicative_participation_item_bank': 'end_time_communicative_participation_item_bank',
+            'rc_neuro_qol_anxiety_short_form': 'end_time_neuro_qol_anxiety_short_form',
             'rc_neuro_qol_cognitive_function_short_form': 'end_time_neuro_qol_cognitive_function_short_form',
+            'rc_neuro_qol_depression_short_form': 'end_time_neuro_qol_depression_short_form',
+            'rc_neuro_qol_emotional_dyscontrol_short_form': 'end_time_neuro_qol_emotional_dyscontrol_short_form',
             'rc_neuro_qol_fatigue_short_form': 'end_time_neuro_qol_fatigue_short_form',
+            'rc_neuro_qol_le_short_form': 'end_time_neuro_qol_le_short_form',
+            'rc_neuro_qol_ue_short_form': 'end_time_neuro_qol_ue_short_form',
+            'rc_neuro_qol_participate_social_roles_short_form': 'end_time_neuro_qol_participate_social_roles_short_form',
+            'rc_neuro_qol_positive_affect_and_wellbeing_short_form': 'end_time_neuro_qol_positive_affect_and_wellbeing_short_form',
+            'rc_neuro_qol_sleep_disturbance_short_form': 'end_time_neuro_qol_sleep_disturbance_short_form',
         }
         new_column_prefix = {
             'rc_demographic_clean': 'demographic',
@@ -92,8 +117,16 @@ class DatabaseConnection:
             'rc_prom_ataxia': 'prom_ataxia',
             'rc_dysarthria_impact_scale': 'dis',
             'rc_communicative_participation_item_bank': 'cpib',
+            'rc_neuro_qol_anxiety_short_form': 'nqol_anxiety',
             'rc_neuro_qol_cognitive_function_short_form': 'nqol_cognitive',
+            'rc_neuro_qol_depression_short_form': 'nqol_depression',
+            'rc_neuro_qol_emotional_dyscontrol_short_form': 'nqol_emotional_dyscontrol',
             'rc_neuro_qol_fatigue_short_form': 'nqol_fatigue',
+            'rc_neuro_qol_le_short_form': 'nqol_le',
+            'rc_neuro_qol_ue_short_form': 'nqol_ue',
+            'rc_neuro_qol_participate_social_roles_short_form': 'nqol_social_role_participation',
+            'rc_neuro_qol_positive_affect_and_wellbeing_short_form': 'nqol_wellbeing',
+            'rc_neuro_qol_sleep_disturbance_short_form': 'nqol_sleep_disturbance',
         }
         tables = {
             name: fuzzy_join_date(
@@ -112,6 +145,14 @@ class DatabaseConnection:
         self.prom_cpib = tables['rc_communicative_participation_item_bank']
         self.prom_nqol_cognitive = tables['rc_neuro_qol_cognitive_function_short_form']
         self.prom_nqol_fatigue = tables['rc_neuro_qol_fatigue_short_form']
+        self.prom_nqol_depression = tables['rc_neuro_qol_depression_short_form']
+        self.prom_nqol_emotional_dyscontrol = tables['rc_neuro_qol_emotional_dyscontrol_short_form']
+        self.prom_nqol_anxiety = tables['rc_neuro_qol_anxiety_short_form']
+        self.prom_nqol_lower_extremity = tables['rc_neuro_qol_le_short_form']
+        self.prom_nqol_upper_extremity = tables['rc_neuro_qol_ue_short_form']
+        self.prom_nqol_social_role_participation = tables['rc_neuro_qol_participate_social_roles_short_form']
+        self.prom_nqol_wellbeing = tables['rc_neuro_qol_positive_affect_and_wellbeing_short_form']
+        self.prom_nqol_sleep_disturbance = tables['rc_neuro_qol_sleep_disturbance_short_form']
 
     def download_tables(self, *table_names: str) -> Dict[str, pd.DataFrame]:
         """Download and return the specified tables from the database"""
