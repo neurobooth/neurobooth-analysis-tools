@@ -198,17 +198,17 @@ class DatabaseConnection:
 
         # Test subjects will either be:
         #   1) missing from the redcap-generated consent table (but present in the subject table), or
-        #   2) flagged as a test subject in the consent table
+        #   2) flagged as a test subject in the baseline data table (no longer the consent table)
         query = '''
         SELECT DISTINCT subj.subject_id
         FROM subject subj
-        LEFT JOIN rc_participant_and_consent_information pci
-            ON subj.subject_id = pci.subject_id
-        WHERE pci.test_subject_boolean OR pci.subject_id IS NULL
+        LEFT JOIN rc_baseline_data bd
+            ON subj.subject_id = bd.subject_id
+        WHERE bd.test_subject_boolean OR bd.subject_id IS NULL
         ORDER BY subj.subject_id
         '''
 
-        DatabaseConnection.wait_for_refresh(self.engine, 'rc_participant_and_consent_information')
+        DatabaseConnection.wait_for_refresh(self.engine, 'rc_baseline_data')
         with self.engine.connect() as connection:
             self.test_subjects = pd.read_sql(query, connection).convert_dtypes().to_numpy(dtype='U').squeeze()
         return self.test_subjects
