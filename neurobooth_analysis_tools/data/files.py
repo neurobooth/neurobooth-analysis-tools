@@ -169,6 +169,8 @@ def file_str_to_device_enum(device_str: str, file_name: str) -> NeuroboothDevice
         return NeuroboothDevice.Mbient
     elif 'mouse' in device_str:
         return NeuroboothDevice.Mouse
+    elif 'webcam' in device_str:
+        return NeuroboothDevice.Webcam
     else:
         raise FilenameException(f"Unable to parse device from {file_name}.")
 

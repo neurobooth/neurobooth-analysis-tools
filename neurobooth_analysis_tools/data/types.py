@@ -58,6 +58,7 @@ class NeuroboothDevice(IntEnum):
     Yeti = 4
     Mbient = 5
     Mouse = 6
+    Webcam = 7
 
 
 class DataException(Exception):
