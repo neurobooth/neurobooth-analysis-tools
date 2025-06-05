@@ -369,6 +369,26 @@ def extract_flir(
     return df
 
 
+def extract_webcam(
+        device: Device,
+        include_event_flags: bool = True
+) -> pd.DataFrame:
+    """Extract a DataFrame representing frame number and timing information."""
+    df = pd.DataFrame(
+        device.data.time_series,
+        columns=['FrameNum', 'Time_ACQ'],
+    )
+    df['Time_LSL'] = device.data.time_stamps
+
+    df['FrameNum'] = df['FrameNum'].astype('Int64')
+
+    if include_event_flags:
+        df['Flag_Instructions'] = create_instruction_mask(device, df['Time_LSL'].to_numpy())
+        df['Flag_Task'] = create_task_mask(device, df['Time_LSL'].to_numpy())
+
+    return df
+
+
 def extract_realsense(
         device: Device,
         include_event_flags: bool = True

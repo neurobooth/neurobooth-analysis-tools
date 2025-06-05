@@ -42,6 +42,9 @@ def mean_frame_rgb(
     elif input_hdf.device == NeuroboothDevice.FLIR:
         df = hdf5.extract_flir(device, include_event_flags=False)
         sync_column = 'FrameNum'
+    elif input_hdf.device == NeuroboothDevice.Webcam:
+        df = hdf5.extract_webcam(device)
+        sync_column = 'FrameNum'
     elif input_hdf.device == NeuroboothDevice.RealSense:
         raise ValueError("RealSense data should be processed using mean_frame_rgb_realsense")
     else:
