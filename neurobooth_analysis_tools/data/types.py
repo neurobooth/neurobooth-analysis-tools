@@ -35,6 +35,7 @@ class NeuroboothTask(Enum):
     SaccadesHoriz = 'saccades_horizontal_obs_1'
     SaccadesVert = 'saccades_vertical_obs_1'
     SaccadesHorizTest = 'saccades_horizontal_obs_test'
+    SDMT = 'sdmt_obs_1'
     SmoothPursuit = 'pursuit_obs'
     SmoothPursuitTest = 'pursuit_test_obs_1'
     FingerNoseDemo = 'finger_nose_demo_obs_1'
