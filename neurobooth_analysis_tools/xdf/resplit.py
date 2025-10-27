@@ -15,16 +15,19 @@ Since the split can take a very long time, it may be wise to run this in the bac
 """
 
 
+# resplit.py
+
 import os
 import argparse
 import datetime
 import traceback
+import time
 from itertools import chain
 from functools import partial
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from tqdm.contrib.concurrent import process_map
+from sshtunnel import SSHTunnelForwarder
 
-import neurobooth_os.iout.resplit_xdf as xdf
 from neurobooth_analysis_tools.io import make_directory
 from neurobooth_analysis_tools.data.files import (
     discover_session_directories,
@@ -32,62 +35,58 @@ from neurobooth_analysis_tools.data.files import (
     is_xdf,
 )
 
+import resplit_xdf as xdf
+import resplit_utils as nb_utils
 
-# Use presets for all XDF files on or before this date, when the parameter table was implemented.
+#Use presets for all XDF files on or before this date
 LOG_DEVICE_PARAM_DATE = datetime.date(2024, 5, 10)
 
-
 def find_xdf(path: str) -> List[str]:
-    """
-    Find all files with a .xdf extension in a given directory.
-    """
+    """Find all files with a .xdf extension in a given directory."""
     return [
         os.path.join(path, file)
         for file in os.listdir(path)
         if is_xdf(file)
     ]
 
-
-def split_process(
-        xdf_file: str,
-        config_path: str,
-        ssh_tunnel: bool,
-        task_map_file: str,
-        correction_spec: str,
-        log_file_dir: str,
-) -> bool:
+def split_one_file(
+    xdf_path: str,
+    config_path: str,
+    ssh_tunnel: bool,
+    task_map_file: str,
+    corrections_path: str
+) -> Tuple[xdf.XDFInfo, list]:
     """
-    This is the function called in parallel processes to split each XDF file.
-    :param xdf_file: The XDF file to split.
-    :param config_path: The path to the JSON config containing database connection info.
-    :param ssh_tunnel: Whether SSH tunneling is necessary.
-    :param task_map_file: The path to the file specifying preset task-device mappings.
-    :param correction_spec: The path specifying HDF5 correction functions.
-    :param log_file_dir: The log file directory. Log files only get written if a SplitException is raised.
-    :return: True if there was a SplitException, False otherwise.
+    Helper function that finds device IDs, calls split(), and returns results.
     """
-    # It is important we create a new connection in each process for thread safety!
-    db_conn = xdf.DatabaseConnection(config_path, ssh_tunnel)
-    correction_spec = xdf.HDF5CorrectionSpec.load(correction_spec)
-
-    # We only provide the preset parameters if the file is from before the cutoff date!
-    xdf_info = xdf.XDFInfo.parse_xdf_name(xdf_file)
-    task_map_file = None if xdf_info.date > LOG_DEVICE_PARAM_DATE else task_map_file
-
+    db_conn = None
+    xdf_info = xdf.XDFInfo.parse_xdf_name(xdf_path)
+    
+    #pass a host and port override to connect through it.
+    
     try:
-        xdf.split(
-            xdf_path=xdf_file,
+        db_conn = xdf.DatabaseConnection(config_path, tunnel=False, override_host='localhost', override_port=6543)
+        
+        correction_spec = xdf.HDF5CorrectionSpec.load(corrections_path)
+        
+        xdf_info, dev_data = xdf.split(
+            xdf_path=xdf_path,
             database_conn=db_conn,
             task_map_file=task_map_file,
             corrections=correction_spec,
         )
-        return False
-    except xdf.SplitException as e:
-        with open(os.path.join(log_file_dir, f'{xdf_info.name}.log'), 'w') as f:
-            f.write(str(e))
-            f.write(traceback.format_exc())
-        return True
+        return xdf_info, dev_data
+    finally:
+        if db_conn:
+            db_conn.close()
 
+
+def chunk_list(lst, chunk_size):
+    for i in range(0, len(lst), chunk_size):
+        yield lst[i:i + chunk_size]
+
+def postgres_quote(s: str) -> str:
+    return '"' + s.replace('"', '\\"') + '"'
 
 def main(
         config_path: str,
@@ -97,39 +96,102 @@ def main(
         log_file_dir: str,
         max_workers: int,
 ) -> None:
-    """
-    Identify and split all XDF files in separate processes.
-    :param config_path: The path to the JSON config containing database connection info.
-    :param ssh_tunnel: Whether SSH tunneling is necessary.
-    :param task_map_file: The path to the file specifying preset task-device mappings.
-    :param correction_spec: The path specifying HDF5 correction functions.
-    :param log_file_dir: The log file directory. Log files only get written if a SplitException is raised.
-    :param max_workers: The number of parallel processes to employ.
-    """
-    # (Clear and) Create log file directory
     make_directory(log_file_dir, clear=True)
 
-    # Identify all files to split
+    # Find all XDF files
     _, session_dirs = discover_session_directories(default_source_directories())
-    xdf_files = process_map(
-        find_xdf, session_dirs, chunksize=10, desc='Finding XDF Files', unit='dir', max_workers=max_workers,
+    print(f"Found {len(session_dirs)} session directories.")
+    
+    xdf_files_unfiltered = process_map(
+        find_xdf, session_dirs, chunksize=10, desc='Finding XDF Files', max_workers=max_workers,
     )
-    xdf_files = list(chain(*xdf_files))  # Flatten nested list
+    xdf_files_unfiltered = list(chain(*xdf_files_unfiltered))
+    # xdf_files_unfiltered = xdf_files_unfiltered[:2] # testing only two files
+    print(f"Discovered {len(xdf_files_unfiltered)} total XDF files.")
 
-    # Perform the split for each file in parallel
-    split_process_ = partial(
-        split_process,
-        config_path=config_path,
-        ssh_tunnel=ssh_tunnel,
-        task_map_file=task_map_file,
-        correction_spec=correction_spec,
-        log_file_dir=log_file_dir,
-    )
-    error_flags = process_map(
-        split_process_, xdf_files, chunksize=1, desc='Spitting XDF', unit='file', max_workers=max_workers,
-    )
+    tunnel = None
+    db_conn = None
+    try:
+        # Establish SSH tunnel if required
+        if ssh_tunnel:
+            config = nb_utils.load_config(config_path)
+            remote_user = config.database.remote_user or os.environ.get('USER')
+            remote_host = config.database.remote_host or 'neurodoor.nmr.mgh.harvard.edu'
+            
+            tunnel = SSHTunnelForwarder(
+                (remote_host, 22),
+                ssh_username=remote_user,
+                ssh_pkey=os.path.expanduser(f"~/.ssh/id_rsa"),
+                remote_bind_address=('neurodoor.nmr.mgh.harvard.edu', 5432),
+                local_bind_address=("localhost", 6543)
+            )
+            print(f"Starting SSH tunnel...")
+            tunnel.start()
+            print(f"SSH tunnel established on {tunnel.local_bind_host}:{tunnel.local_bind_port}")
+            # Connect through the tunnel to get existing files
+            db_conn = xdf.DatabaseConnection(config_path, tunnel=False, override_host=tunnel.local_bind_host, override_port=tunnel.local_bind_port)
+        else:
+            # Connect directly
+            db_conn = xdf.DatabaseConnection(config_path, tunnel=False)
 
-    print(f"There were {sum(error_flags)} errors encountered during the split process.")
+        # Get existing XDF files from the database
+        processed_xdf = set()
+        print("Querying database for already processed XDF files...")
+        with db_conn.connection.cursor() as cursor:
+            cursor.execute("SELECT DISTINCT xdf_path FROM log_split")
+            processed_xdf = {row[0] for row in cursor.fetchall() if row and row[0]}
+        print(f"Found {len(processed_xdf)} previously processed files.")
+
+        xdf_files = [f for f in xdf_files_unfiltered if os.path.abspath(f) not in processed_xdf]
+        print(f"After filtering, {len(xdf_files)} new files will be processed.")
+        
+        if not xdf_files:
+            print("No new files to process. Exiting.")
+            return
+
+        # Use partial to pre-fill arguments for the parallel worker function
+        process_file_ = partial(
+            split_one_file,
+            config_path=config_path,
+            ssh_tunnel=ssh_tunnel, 
+            task_map_file=task_map_file,
+            corrections_path=correction_spec)
+
+        batch_size = 10 # Process in batches to log incrementally
+        for i, batch_files in enumerate(chunk_list(xdf_files, batch_size), 1):
+            print(f"\n--- Processing batch {i} of {len(batch_files)} files ---")
+            
+            results = process_map(
+                process_file_,
+                batch_files,
+                max_workers=max_workers,
+                desc="Splitting XDF files"
+            )
+            results = [r for r in results if r is not None and r[1]] 
+
+            if not results:
+                print("No files were successfully processed in this batch.")
+                continue
+
+            print(f"Successfully split {len(results)} files. Logging to database...")
+            for (xdf_info, device_data) in results:
+                try:
+                    db_conn.log_split(xdf_info, device_data)
+                except Exception as e:
+                    print(f"[ERROR] Database log failed for {xdf_info.path}: {e}")
+                    traceback.print_exc()
+            print(f"Finished logging batch {i}.")
+
+    except Exception as e:
+        print(f"[ERROR] An error occurred in the main process: {e}")
+        traceback.print_exc()
+    finally:
+        if db_conn:
+            db_conn.close()
+        if tunnel:
+            tunnel.stop()
+            print("SSH tunnel closed.")
+        print("All done!")
 
 
 def parse_arguments() -> Dict[str, Any]:
@@ -189,4 +251,8 @@ def parse_arguments() -> Dict[str, Any]:
 
 
 if __name__ == '__main__':
-    main(**parse_arguments())
+    start_time = time.time()
+    args = parse_arguments()
+    main(**args)
+    elapsed = time.time() - start_time
+    print(f"\nTotal script execution time: {elapsed:.2f} seconds.")
