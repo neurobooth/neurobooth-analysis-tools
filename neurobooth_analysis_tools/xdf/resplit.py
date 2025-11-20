@@ -6,10 +6,8 @@ larger script.
 
 Example (running on neurodoor):
 conda activate neurobooth-os
-cd /space/neo/3/neurobooth//applications/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf
-python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json \
---task-device-map /space/drwho/3/neurobooth/applications/neurobooth-os/examples/split_task_device_map.yml \
---hdf5-corrections /space/drwho/3/neurobooth/applications/neurobooth-os/examples/hdf5_corrections.yml
+cd /space/neo/3/neurobooth/applications/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf
+python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json --task-device-map /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/split_task_device_map.yml --hdf5-corrections /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/hdf5_corrections.yml
 
 Since the split can take a very long time, it may be wise to run this in the background with nohup.
 """
@@ -22,24 +20,49 @@ import argparse
 import datetime
 import traceback
 import time
+import sys
 from itertools import chain
 from functools import partial
 from typing import Dict, List, Any, Tuple
 from tqdm.contrib.concurrent import process_map
 from sshtunnel import SSHTunnelForwarder
-
-from neurobooth_analysis_tools.io import make_directory
-from neurobooth_analysis_tools.data.files import (
-    discover_session_directories,
-    default_source_directories,
-    is_xdf,
-)
+from shutil import rmtree
+# script_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(script_dir)
+# sys.path.insert(0, parent_dir)
+# # import io
+# # from data.files import (
+# #     discover_session_directories,
+# #     default_source_directories,
+# #     is_xdf,
+# # )
 
 import resplit_xdf as xdf
 import resplit_utils as nb_utils
+from resplit_utils import (discover_session_directories,is_xdf,default_source_directories)
+# import default_source_directories
+
 
 #Use presets for all XDF files on or before this date
 LOG_DEVICE_PARAM_DATE = datetime.date(2024, 5, 10)
+
+def make_directory(path: str, clear=False) -> None:
+    if os.path.exists(path):
+        if clear:
+            rmtree(path)
+        else:
+            return
+
+    os.makedirs(path)
+
+def new_discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[str]]:
+    """Discover a list of Neurobooth sessions from within the given data directories."""
+    sessions = []
+    session_dirs = []
+    for d in data_dirs:
+        if os.path.isdir(d) :
+            session_dirs.append(d)
+    return sessions, session_dirs
 
 def find_xdf(path: str) -> List[str]:
     """Find all files with a .xdf extension in a given directory."""

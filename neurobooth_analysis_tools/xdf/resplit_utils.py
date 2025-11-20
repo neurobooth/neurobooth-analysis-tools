@@ -4,10 +4,45 @@ from typing import NamedTuple, List, Any, Optional
 import numpy as np
 import pylsl
 import pyxdf
+from importlib import resources
 from pydantic import BaseModel, Field
+from functools import partial
 import os
+import re
+from typing import NamedTuple, Tuple, List, Union, Optional
 
+SUBJECT_YYYY_MM_DD = re.compile(r'(\d+)_(\d\d\d\d)[_-](\d\d)[_-](\d\d).*')
 
+def has_extension(file: str, extension: str) -> bool:
+    _, ext = os.path.splitext(file)
+    return ext.lower() == extension.lower()
+
+is_xdf = partial(has_extension, extension='.xdf')
+
+def default_source_directories() -> List[str]:
+    # lines = resources.read_text(__package__,'default_source_directories.txt').strip().splitlines(keepends=False)
+    with open('default_source_directories.txt', 'r') as f:
+        text_content = f.read()
+    lines = text_content.strip().splitlines(keepends=False)
+    return [os.path.abspath(line) for line in lines]
+
+def is_valid_identifier(identifier: str, pattern: re.Pattern = SUBJECT_YYYY_MM_DD) -> bool:
+    """Test if a string starts with a SUBJECT_YYYY-MM-DD pattern. (Both - and _ permitted between date fields.)"""
+    matches = re.fullmatch(pattern, identifier)
+    return matches is not None
+
+def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[str]]:
+    """Discover a list of Neurobooth sessions from within the given data directories."""
+    sessions = []
+    session_dirs = []
+    for d in data_dirs:
+        for session in os.listdir(d):
+            session_path = os.path.join(d, session)
+            if os.path.isdir(session_path) and is_valid_identifier(session):
+                sessions.append(session)
+                session_dirs.append(session_path)
+
+    return sessions, session_dirs
 #all classes
 class DeviceData(NamedTuple):
     """A structured representation of data parsed for a single device."""
