@@ -84,7 +84,8 @@ def split_one_file(
     """
     db_conn = None
     xdf_info = xdf.XDFInfo.parse_xdf_name(xdf_path)
-    
+    task_map_file = None if xdf_info.date > LOG_DEVICE_PARAM_DATE else task_map_file
+
     #pass a host and port override to connect through it.
     
     try:
