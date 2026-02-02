@@ -7,7 +7,6 @@ import json
 import re
 from typing import NamedTuple
 from resplit_utils import DeviceData
-# from neurobooth_os.iout.stream_utils import DataVersion
 
 class DataVersion(NamedTuple):
     major: int

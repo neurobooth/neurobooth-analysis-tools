@@ -1,3 +1,18 @@
+"""
+Utility Functions and Data Structures for XDF File Processing.
+
+This module provides core utilities for working with Neurobooth XDF (Extensible Data Format)
+files, including:
+- Data structures for device data representation
+- Configuration loading and parsing
+- XDF file discovery and parsing
+- Time synchronization utilities
+
+The utilities are designed to be lightweight and avoid dependencies on the full
+Neurobooth-OS installation.
+"""
+
+
 import json
 import time
 from typing import NamedTuple, List, Any, Optional
@@ -11,15 +26,42 @@ import os
 import re
 from typing import NamedTuple, Tuple, List, Union, Optional
 
+# Pattern for Neurobooth session directories: SUBJECT_YYYY-MM-DD or SUBJECT_YYYY_MM_DD
 SUBJECT_YYYY_MM_DD = re.compile(r'(\d+)_(\d\d\d\d)[_-](\d\d)[_-](\d\d).*')
 
 def has_extension(file: str, extension: str) -> bool:
+    """
+    Check if a file has a specific extension (case-insensitive).
+    
+    Args:
+        file (str): The filename to check.
+        extension (str): The extension to check for (should include the dot, e.g., '.xdf').
+        
+    Returns:
+        bool: True if the file has the specified extension, False otherwise.
+    """
     _, ext = os.path.splitext(file)
     return ext.lower() == extension.lower()
 
+# Partial function for checking XDF files specifically
 is_xdf = partial(has_extension, extension='.xdf')
 
 def default_source_directories() -> List[str]:
+    """
+    Load the default source directories for Neurobooth data from configuration file.
+    
+    Reads from 'default_source_directories.txt' in the current directory, where each
+    line contains a path to a data directory.
+    
+    Returns:
+        List[str]: List of absolute paths to data directories.
+        
+    Raises:
+        FileNotFoundError: If default_source_directories.txt is not found.
+        
+    Note:
+        The file should contain one directory path per line. Empty lines are ignored.
+    """
     # lines = resources.read_text(__package__,'default_source_directories.txt').strip().splitlines(keepends=False)
     with open('default_source_directories.txt', 'r') as f:
         text_content = f.read()
@@ -27,12 +69,42 @@ def default_source_directories() -> List[str]:
     return [os.path.abspath(line) for line in lines]
 
 def is_valid_identifier(identifier: str, pattern: re.Pattern = SUBJECT_YYYY_MM_DD) -> bool:
-    """Test if a string starts with a SUBJECT_YYYY-MM-DD pattern. (Both - and _ permitted between date fields.)"""
+    """
+    Test if a string matches the expected Neurobooth session identifier pattern.
+    
+    The default pattern is SUBJECT_YYYY-MM-DD or SUBJECT_YYYY_MM_DD, where:
+    - SUBJECT is a numeric subject ID
+    - YYYY is a 4-digit year
+    - MM is a 2-digit month
+    - DD is a 2-digit day
+    Both hyphens (-) and underscores (_) are permitted between date fields.
+    
+    Args:
+        identifier (str): The string to validate.
+        pattern (re.Pattern, optional): Regex pattern to match against. 
+                                        Defaults to SUBJECT_YYYY_MM_DD.
+        
+    Returns:
+        bool: True if the identifier matches the pattern, False otherwise.
+    """
     matches = re.fullmatch(pattern, identifier)
     return matches is not None
 
 def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[str]]:
-    """Discover a list of Neurobooth sessions from within the given data directories."""
+    """
+    Discover valid Neurobooth session directories within the given data directories.
+    
+    Scans each data directory and identifies subdirectories that match the expected
+    Neurobooth session naming pattern (SUBJECT_YYYY-MM-DD).
+    
+    Args:
+        data_dirs (List[str]): List of root data directory paths to search.
+        
+    Returns:
+        Tuple[List[str], List[str]]: A tuple containing:
+            - List of session names (directory names only)
+            - List of full paths to session directories
+    """
     sessions = []
     session_dirs = []
     for d in data_dirs:
@@ -45,7 +117,23 @@ def discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[
     return sessions, session_dirs
 #all classes
 class DeviceData(NamedTuple):
-    """A structured representation of data parsed for a single device."""
+    """
+    Structured representation of data parsed for a single device from an XDF file.
+    
+    This structure encapsulates all information needed to write device-specific HDF5
+    files and log the split operation to the database.
+    
+    Attributes:
+        device_id (str): Unique identifier for the device 
+        device_data (Any): Raw device data stream from the XDF file, including
+                          time_stamps, time_series, and metadata.
+        marker_data (Any): Marker stream data associated with this device, used for
+                          event synchronization.
+        video_files (List[str]): List of video filenames associated with this device
+                                 stream (empty if no videos).
+        sensor_ids (List[str]): List of sensor identifiers for this device
+        hdf5_path (str): Full path where the device HDF5 file should be written.
+    """
     device_id: str
     device_data: Any
     marker_data: Any
@@ -54,7 +142,18 @@ class DeviceData(NamedTuple):
     hdf5_path: str
 
 class DatabaseConfig(BaseModel):
-    """Pydantic model for database connection details."""
+    """
+    Pydantic model for database connection configuration.
+    
+    Attributes:
+        dbname (str): Name of the PostgreSQL database.
+        user (str): Database user name.
+        password (str): Database password.
+        host (str): Database host address.
+        port (int): Database port number.
+        remote_host (Optional[str]): Remote host for SSH tunneling (if needed).
+        remote_user (Optional[str]): Remote user for SSH tunneling (if needed).
+    """
     dbname: str
     user: str
     password: str
@@ -64,7 +163,15 @@ class DatabaseConfig(BaseModel):
     remote_user: Optional[str] = None
 
 class AppConfig(BaseModel):
-    """Pydantic model for the overall application configuration."""
+    """
+    Pydantic model for the overall application configuration.
+    
+    This is the top-level configuration object that contains all subsystem
+    configurations (currently only database, but extensible for future needs).
+    
+    Attributes:
+        database (DatabaseConfig): Database connection configuration.
+    """
     database: DatabaseConfig
     #if we need another configs in future
     
@@ -72,10 +179,18 @@ class AppConfig(BaseModel):
 #functions
 def load_config(config_path: str) -> AppConfig:
     """
-    Loads a JSON configuration file and parses it into Pydantic models.
+    Load and parse a JSON configuration file into Pydantic models.
     
-    :param config_path: Path to the neurobooth_os_config.json file.
-    :return: An AppConfig object with the loaded settings.
+    Args:
+        config_path (str): Path to the neurobooth_os_config.json configuration file.
+        
+    Returns:
+        AppConfig: Parsed configuration object with validated fields.
+        
+    Raises:
+        FileNotFoundError: If the configuration file doesn't exist.
+        json.JSONDecodeError: If the file contains invalid JSON.
+        pydantic.ValidationError: If the configuration structure is invalid.
     """
     with open(config_path, 'r') as f:
         config_data = json.load(f)
@@ -83,20 +198,29 @@ def load_config(config_path: str) -> AppConfig:
 
 def compute_clocks_diff() -> float:
     """
-    Compute difference between local LSL and Unix clock.
+    Compute the offset between the local LSL clock and Unix (epoch) time.
     
-    :returns: The offset between the clocks (in seconds).
+    This is used to convert LSL timestamps (used internally by XDF streams) to
+    Unix timestamps for database storage and cross-system synchronization.
+    
+    Returns:
+        float: The offset in seconds to add to LSL timestamps to get Unix time.
+               Calculated as: unix_time - lsl_time
     """
     return time.time() - pylsl.local_clock()
 
 def _make_hdf5_path(xdf_path: str, device_id: str, sensor_ids: List[str]) -> str:
     """
-    Generate a path for a device HDF5 file extracted from an XDF file.
-
-    :param xdf_path: Full path to the XDF file.
-    :param device_id: ID string for the device.
-    :param sensor_ids: List of ID strings for each included sensor.
-    :returns: A standardized file name for corresponding device HDF5 file.
+    Generate a standardized path for a device-specific HDF5 file extracted from XDF.
+    
+    Args:
+        xdf_path (str): Full path to the source XDF file.
+        device_id (str): ID string for the device .
+        sensor_ids (List[str]): List of sensor ID strings .
+        
+    Returns:
+        str: Full path for the corresponding device HDF5 file.
+        
     """
     sensor_list = "-".join(sensor_ids)
     head, _ = os.path.splitext(xdf_path)
