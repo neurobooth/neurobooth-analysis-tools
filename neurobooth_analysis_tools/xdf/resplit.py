@@ -4,7 +4,7 @@ It identifies all XDF files on the cluster and splits them in parallel.
 It is advised to run the split script on a single file to make sure configurations are correct before running this
 larger script.
 
-Example (running on neurodoor):
+Example (running on neurodoor no need to provide the ssh-tunnel flag, if running from other servers, specify ssh-tunnel):
 conda activate neurobooth-os
 cd /space/neo/3/neurobooth/applications/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf
 python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json --task-device-map /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/split_task_device_map.yml --hdf5-corrections /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/hdf5_corrections.yml --ssh-tunnel
@@ -19,8 +19,6 @@ This script:
 """
 
 
-# resplit.py
-
 import os
 import argparse
 import datetime
@@ -29,24 +27,15 @@ import time
 import sys
 from itertools import chain
 from functools import partial
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from tqdm.contrib.concurrent import process_map
 from sshtunnel import SSHTunnelForwarder
 from shutil import rmtree
-# script_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(script_dir)
-# sys.path.insert(0, parent_dir)
-# # import io
-# # from data.files import (
-# #     discover_session_directories,
-# #     default_source_directories,
-# #     is_xdf,
-# # )
+
 
 import resplit_xdf as xdf
 import resplit_utils as nb_utils
 from resplit_utils import (discover_session_directories,is_xdf,default_source_directories)
-# import default_source_directories
 
 
 #Use preset YAML device mapping for all XDF files on or before this date
@@ -70,15 +59,6 @@ def make_directory(path: str, clear=False) -> None:
             return
 
     os.makedirs(path)
-
-def new_discover_session_directories(data_dirs: List[str]) -> Tuple[List[str], List[str]]:
-    """Discover a list of Neurobooth sessions from within the given data directories."""
-    sessions = []
-    session_dirs = []
-    for d in data_dirs:
-        if os.path.isdir(d) :
-            session_dirs.append(d)
-    return sessions, session_dirs
 
 def find_xdf(path: str) -> List[str]:
     """
@@ -120,7 +100,7 @@ def split_one_file(
     ssh_tunnel: bool,
     task_map_file: str,
     corrections_path: str
-) -> Tuple[xdf.XDFInfo, List[Dict[str, Any]]]:
+) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]]]]:
     """
     Worker function to split a single XDF file (designed for parallel execution).
     
@@ -140,6 +120,7 @@ def split_one_file(
         
     Returns:
         Tuple[XDFInfo, List[Dict]]: XDF metadata and slim device data for logging.
+        or None if the processing failed
 
     """
     db_conn = None
@@ -167,7 +148,13 @@ def split_one_file(
             corrections=correction_spec,
         )
         return xdf_info, dev_data
-
+    
+    except Exception as e:
+        # Log the error and return None to indicate failure
+        print(f"[ERROR] Failed to process {xdf_path}: {e}")
+        traceback.print_exc()
+        return None
+        
     finally:
         if db_conn:
             db_conn.close()

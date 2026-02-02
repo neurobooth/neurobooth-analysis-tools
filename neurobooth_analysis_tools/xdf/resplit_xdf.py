@@ -390,53 +390,6 @@ class DatabaseConnection:
         # Commit all insertions
         self.connection.commit()
 
-    def log_split_old(self, xdf_info: XDFInfo, device_data: List[nb_utils.DeviceData]) -> None:
-        """
-        Create entries in the log_split table to reflect created HDF5 files.
-        """
-        
-        with self.connection.cursor() as cursor:
-            for device in device_data:
-                
-                time_offset = nb_utils.compute_clocks_diff()
-                timestamps = device.device_data["time_stamps"]
-                if len(timestamps) < 2:
-                    continue
-
-                start_time = datetime.datetime.fromtimestamp(timestamps[0] + time_offset).strftime("%Y-%m-%d %H:%M:%S")
-                end_time = datetime.datetime.fromtimestamp(timestamps[-1] + time_offset).strftime("%Y-%m-%d %H:%M:%S")
-                temporal_resolution = 1 / np.median(np.diff(timestamps))
-                
-                hdf5_folder, hdf5_file = os.path.split(device.hdf5_path)
-                _, session_folder = os.path.split(hdf5_folder)
-                
-                # Correctly build the sensor file paths array
-                sensor_files = [f'{session_folder}/{hdf5_file}'] + [f'{session_folder}/{f}' for f in device.video_files]
-                sensor_file_paths = '{' + ', '.join(sensor_files) + '}'
-
-                for sensor_id in device.sensor_ids:
-                    query_params = {
-                        'subject_id': xdf_info.subject_id,
-                        'date': xdf_info.date.isoformat(),
-                        'task_id': xdf_info.task_id,
-                        'temporal_resolution': temporal_resolution,
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'device_id': device.device_id,
-                        'sensor_id': sensor_id,
-                        'hdf5_file_path': f'{session_folder}/{hdf5_file}',
-                        'xdf_path': xdf_info.xdf_pathd,
-                        'sensor_file_paths': sensor_file_paths,
-                    }
-                    cursor.execute(
-                        """
-                        INSERT INTO log_split (subject_id, date, task_id, temporal_resolution, start_time, end_time, device_id, sensor_id, hdf5_file_path, xdf_path, sensor_file_paths)
-                        VALUES (%(subject_id)s, %(date)s, %(task_id)s, %(temporal_resolution)s, %(start_time)s, %(end_time)s, %(device_id)s, %(sensor_id)s, %(hdf5_file_path)s, %(xdf_path)s, %(sensor_file_paths)s)
-                        """,
-                        query_params
-                    )
-        self.connection.commit()
-
 
 def device_id_from_yaml(file: str, task_id: str) -> List[str]:
     """
