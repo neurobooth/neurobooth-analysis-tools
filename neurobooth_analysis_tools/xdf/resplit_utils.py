@@ -50,8 +50,8 @@ def default_source_directories() -> List[str]:
     """
     Load the default source directories for Neurobooth data from configuration file.
     
-    Reads from 'default_source_directories.txt' in the current directory, where each
-    line contains a path to a data directory.
+    Reads from 'default_source_directories.txt' in the data folder (one level up
+    from the xdf folder), where each line contains a path to a data directory.
     
     Returns:
         List[str]: List of absolute paths to data directories.
@@ -62,8 +62,11 @@ def default_source_directories() -> List[str]:
     Note:
         The file should contain one directory path per line. Empty lines are ignored.
     """
-    # lines = resources.read_text(__package__,'default_source_directories.txt').strip().splitlines(keepends=False)
-    with open('default_source_directories.txt', 'r') as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    #Go up one level to neurobooth_analysis_tools, then into data folder
+    data_dir = os.path.join(os.path.dirname(script_dir), 'data')
+    config_file = os.path.join(data_dir, 'default_source_directories.txt')
+    with open(config_file, 'r') as f:
         text_content = f.read()
     lines = text_content.strip().splitlines(keepends=False)
     return [os.path.abspath(line) for line in lines]
