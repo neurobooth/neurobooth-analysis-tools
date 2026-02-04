@@ -171,6 +171,16 @@ extract_instruction_boundaries = partial(
     start_prefixes=['Intructions_start', 'Intructions-continue-repeat_start', 'inst-continue-repeat_start'],
     end_prefixes=['Intructions_end', 'Intructions-continue-repeat_end', 'inst-continue-repeat_end'],
 )
+extract_practice_trial_boundaries = partial(
+    extract_event_boundaries,
+    start_prefixes=['PracticeTrial_start'],
+    end_prefixes=['PracticeTrial_end'],
+)
+extract_test_trial_boundaries = partial(
+    extract_event_boundaries,
+    start_prefixes=['Trial_start'],
+    end_prefixes=['Trial_end'],
+)
 extract_trial_boundaries = partial(
     extract_event_boundaries,
     start_prefixes=['PracticeTrial_start', 'Trial_start'],
