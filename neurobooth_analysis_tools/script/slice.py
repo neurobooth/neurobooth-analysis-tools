@@ -278,6 +278,13 @@ def add_task_group(parser: argparse.ArgumentParser) -> None:
         help='Repetitive "Pa-Ta-Ka" syllables'
     )
     group.add_argument(
+        '--ahh',
+        dest='tasks',
+        action='append_const',
+        const=NeuroboothTask.Ahh,
+        help='Sustained phonation of "Ahh" syllable'
+    )
+    group.add_argument(
         '--passage-reading',
         dest='tasks',
         action='append_const',
