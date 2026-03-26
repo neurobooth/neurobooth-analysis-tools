@@ -13,6 +13,15 @@ SUBJECT_YYYY_MM_DD = re.compile(r'(\d+)_(\d\d\d\d)[_-](\d\d)[_-](\d\d).*')
 DATA_FILE_PATTERN = re.compile(r'(\d+)_(\d\d\d\d)-(\d\d)-(\d\d)_(\d\d)h-(\d\d)m-(\d\d)s_(.*)(\..+)')
 NOTE_FILE_PATTERN = re.compile(r'(\d+)_(\d\d\d\d)-(\d\d)-(\d\d)-(.*)-notes\.txt')
 TASK_DEVICE_PATTEN = re.compile(r'(' + r'|'.join([t.value for t in NeuroboothTask]) + r')_?(.*)')
+CSV_FILE_PATTERN = re.compile(
+    r'(\d+)_(\d\d\d\d)-(\d\d)-(\d\d)_(\d\d)h-(\d\d)m-(\d\d)s_(DSC|MOT)_(results|outcomes)(?:_v2)?\.csv'
+)
+
+# Mapping from CSV task abbreviation (as it appears in the filename) to NeuroboothTask enum
+CSV_TASK_MAP = {
+    'DSC': NeuroboothTask.DSC,
+    'MOT': NeuroboothTask.MOT,
+}
 
 
 class FilenameException(Exception):
@@ -113,6 +122,41 @@ def parse_files(session_path: str, skip_on_error: bool = False) -> List[FileMeta
                 continue
             raise e
     return metadata
+
+
+def parse_csv_files(session_path: str) -> List[FileMetadata]:
+    """Parse task-level CSV result files (results/outcomes) within a Neurobooth session directory."""
+    metadata = []
+    for f in os.listdir(session_path):
+        if not os.path.isfile(os.path.join(session_path, f)):
+            continue
+        if re.fullmatch(CSV_FILE_PATTERN, f) is not None:
+            metadata.append(parse_csv_file(session_path, f))
+    return metadata
+
+
+def parse_csv_file(session_path: str, file_name: str) -> FileMetadata:
+    """Parse the information from a single task-level CSV result file name."""
+    match = re.fullmatch(CSV_FILE_PATTERN, file_name)
+    if match is None:
+        raise FilenameException(f"Could not parse CSV file {os.path.join(session_path, file_name)}")
+
+    subj_id = match[1]
+    year, month, day = int(match[2]), int(match[3]), int(match[4])
+    hour, minute, second = int(match[5]), int(match[6]), int(match[7])
+    dt = datetime(year, month, day, hour, minute, second)
+    task = CSV_TASK_MAP[match[8]]
+
+    return FileMetadata(
+        session_path=session_path,
+        file_name=file_name,
+        subject_id=subj_id,
+        datetime=dt,
+        task=task,
+        device=NeuroboothDevice.NoDevice,
+        device_info='',
+        extension='.csv',
+    )
 
 
 def parse_file(session_path: str, file_name: str) -> FileMetadata:

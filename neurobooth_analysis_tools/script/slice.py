@@ -14,7 +14,7 @@ from itertools import chain
 from tqdm.contrib.concurrent import process_map
 import sysrsync
 
-from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, FileMetadata
+from neurobooth_analysis_tools.data.files import discover_session_directories, parse_files, parse_csv_files, FileMetadata
 from neurobooth_analysis_tools.data.types import NeuroboothDevice, NeuroboothTask
 from neurobooth_analysis_tools.script.file_util import check_valid_directory, validate_source_directories
 from neurobooth_analysis_tools.script.secrets import Secrets
@@ -30,6 +30,7 @@ def main() -> None:
 def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
     """Create a list of metadata objects for data files that match conditions specified on the command line."""
     _, session_dirs = discover_session_directories(args.source)
+
     parse_files_no_error = partial(parse_files, skip_on_error=True)
     metadata = process_map(
         parse_files_no_error, session_dirs, desc="Parsing File Names", unit='sessions', chunksize=1
@@ -51,7 +52,31 @@ def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
         metadata = filter(lambda m: m.subject_id not in test_subj, metadata)
         metadata = filter(lambda m: int(m.subject_id) >= 100100, metadata)
 
-    return list(metadata)  # Resolve filters
+    result = list(metadata)  # Resolve filters
+
+    if args.include_csv:
+        result += get_matching_csv_files(args, session_dirs)
+
+    return result
+
+
+def get_matching_csv_files(args: argparse.Namespace, session_dirs: List[str]) -> List[FileMetadata]:
+    """Collect task-level CSV result files matching the conditions specified on the command line."""
+    csv_metadata = process_map(
+        parse_csv_files, session_dirs, desc="Parsing CSV Files", unit='sessions', chunksize=1
+    )
+    csv_metadata = chain(*csv_metadata)  # Flatten list of lists
+
+    csv_metadata = filter(lambda m: m.datetime.date() >= args.start_date, csv_metadata)
+    csv_metadata = filter(lambda m: m.datetime.date() <= args.end_date, csv_metadata)
+    csv_metadata = filter(lambda m: m.task in args.tasks, csv_metadata)
+
+    if not args.include_test_subjects:
+        test_subj = Secrets().get_database_connection().get_test_subjects()
+        csv_metadata = filter(lambda m: m.subject_id not in test_subj, csv_metadata)
+        csv_metadata = filter(lambda m: int(m.subject_id) >= 100100, csv_metadata)
+
+    return list(csv_metadata)
 
 
 def create_directories(args: argparse.Namespace, metadata: List[FileMetadata]) -> None:
@@ -181,6 +206,11 @@ def add_filter_group(parser: argparse.ArgumentParser) -> None:
         '--include-test-subjects',
         action='store_true',
         help="Include test subject data in the slice."
+    )
+    group.add_argument(
+        '--include-csv',
+        action='store_true',
+        help="Include task-level CSV result files (results/outcomes) for DSC and MOT tasks."
     )
 
 

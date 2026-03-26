@@ -66,6 +66,7 @@ class NeuroboothDevice(IntEnum):
     Mbient = 5
     Mouse = 6
     Webcam = 7
+    NoDevice = 8  # Sentinel for files not associated with a specific device (e.g., task-level CSV results)
 
 
 class DataException(Exception):
