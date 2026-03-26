@@ -8,7 +8,7 @@ Because of storage concerns, video data is not currently supported as part of a 
 import os
 import argparse
 import datetime
-from typing import List
+from typing import Iterable, List
 from functools import partial
 from itertools import chain
 from tqdm.contrib.concurrent import process_map
@@ -42,8 +42,8 @@ def get_matching_files(args: argparse.Namespace) -> List[FileMetadata]:
     elif args.exclude:
         metadata = filter(lambda m: m.extension not in args.exclude, metadata)
 
-    metadata = filter(lambda m: m.datetime.date() >= args.start_date, metadata)
-    metadata = filter(lambda m: m.datetime.date() <= args.end_date, metadata)
+    metadata = apply_session_filters(args, metadata)
+
     metadata = filter(lambda m: m.device in args.devices, metadata)
     metadata = filter(lambda m: m.task in args.tasks, metadata)
 
@@ -67,8 +67,8 @@ def get_matching_csv_files(args: argparse.Namespace, session_dirs: List[str]) ->
     )
     csv_metadata = chain(*csv_metadata)  # Flatten list of lists
 
-    csv_metadata = filter(lambda m: m.datetime.date() >= args.start_date, csv_metadata)
-    csv_metadata = filter(lambda m: m.datetime.date() <= args.end_date, csv_metadata)
+    csv_metadata = apply_session_filters(args, csv_metadata)
+
     csv_metadata = filter(lambda m: m.task in args.tasks, csv_metadata)
 
     if not args.include_test_subjects:
@@ -125,6 +125,7 @@ def configure_parser() -> argparse.ArgumentParser:
 
     add_directory_group(parser)
     add_filter_group(parser)
+    add_session_selection_group(parser)
     add_device_group(parser)
     add_task_group(parser)
 
@@ -153,6 +154,42 @@ def validate_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace
     # Default to all tasks if no flag is specified
     if args.tasks is None:
         args.tasks = [t for t in NeuroboothTask]
+
+    # Check mutual exclusivity of session selection flags
+    selection_flags = [args.subject, args.subject_file, args.session_file]
+    if sum(f is not None for f in selection_flags) > 1:
+        parser.error("--subject, --subject-file, and --session-file are mutually exclusive.")
+
+    # Validate that provided file paths exist
+    if args.subject_file and not os.path.isfile(args.subject_file):
+        parser.error(f"Subject file not found: {args.subject_file}")
+    if args.session_file and not os.path.isfile(args.session_file):
+        parser.error(f"Session file not found: {args.session_file}")
+
+
+def apply_session_filters(args: argparse.Namespace, metadata: Iterable[FileMetadata]) -> Iterable[FileMetadata]:
+    """Apply session/subject selection and date range filters to a metadata stream."""
+    if args.session_file:
+        session_set = set(read_id_file(args.session_file))
+        metadata = filter(lambda m: os.path.basename(m.session_path) in session_set, metadata)
+    else:
+        metadata = filter(lambda m: m.datetime.date() >= args.start_date, metadata)
+        metadata = filter(lambda m: m.datetime.date() <= args.end_date, metadata)
+
+    if args.subject:
+        subject_set = set(args.subject)
+        metadata = filter(lambda m: m.subject_id in subject_set, metadata)
+    elif args.subject_file:
+        subject_set = set(read_id_file(args.subject_file))
+        metadata = filter(lambda m: m.subject_id in subject_set, metadata)
+
+    return metadata
+
+
+def read_id_file(path: str) -> List[str]:
+    """Read a list of IDs (subject or session) from a text file, one per line. Blank lines are ignored."""
+    with open(path) as f:
+        return [line.strip() for line in f if line.strip()]
 
 
 def add_directory_group(parser: argparse.ArgumentParser) -> None:
@@ -211,6 +248,35 @@ def add_filter_group(parser: argparse.ArgumentParser) -> None:
         '--include-csv',
         action='store_true',
         help="Include task-level CSV result files (results/outcomes) for DSC and MOT tasks."
+    )
+
+
+def add_session_selection_group(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group(
+        title="Session Selection",
+        description=(
+            "Optionally restrict the slice to specific subjects or sessions. "
+            "These flags are mutually exclusive. If none are specified, all subjects within the date range are included."
+        )
+    )
+    group.add_argument(
+        '--subject',
+        action='append',
+        type=str,
+        metavar='SUBJECT_ID',
+        help="Only include data for the given subject ID. Can be specified multiple times."
+    )
+    group.add_argument(
+        '--subject-file',
+        type=str,
+        metavar='FILE',
+        help="Path to a text file of subject IDs, one per line. All sessions for those subjects within the date range are included. Blank lines and malformed IDs are silently ignored."
+    )
+    group.add_argument(
+        '--session-file',
+        type=str,
+        metavar='FILE',
+        help="Path to a text file of exact session IDs, one per line (e.g. 100204_2022-08-16). Date range is ignored. Blank lines and malformed IDs are silently ignored."
     )
 
 
