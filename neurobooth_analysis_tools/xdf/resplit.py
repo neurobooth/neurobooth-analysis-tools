@@ -100,7 +100,7 @@ def split_one_file(
     ssh_tunnel: bool,
     task_map_file: str,
     corrections_path: str
-) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]]]]:
+) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]],Optional[str]]]:
     """
     Worker function to split a single XDF file (designed for parallel execution).
     
@@ -141,13 +141,13 @@ def split_one_file(
         correction_spec = xdf.HDF5CorrectionSpec.load(corrections_path)
         
         # Split the XDF file
-        xdf_info, dev_data = xdf.split(
+        xdf_info, dev_data, recording_datetime = xdf.split(
             xdf_path=xdf_path,
             database_conn=db_conn,
             task_map_file=task_map_file,
             corrections=correction_spec,
         )
-        return xdf_info, dev_data
+        return xdf_info, dev_data, recording_datetime
     
     except Exception as e:
         # Log the error and return None to indicate failure
@@ -279,9 +279,9 @@ def main(
             
             # Log results to database
             print(f"Successfully split {len(results)} files. Logging to database...")
-            for (xdf_info, device_data) in results:
+            for (xdf_info, device_data,recording_datetime) in results:
                 try:
-                    db_conn.log_split(xdf_info, device_data)
+                    db_conn.log_split(xdf_info, device_data,recording_datetime)
                 except Exception as e:
                     print(f"[ERROR] Database log failed for {xdf_info.path}: {e}")
                     traceback.print_exc()

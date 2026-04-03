@@ -229,15 +229,15 @@ def _make_hdf5_path(xdf_path: str, device_id: str, sensor_ids: List[str]) -> str
     head, _ = os.path.splitext(xdf_path)
     return f"{head}-{device_id}-{sensor_list}.hdf5"
     
-def parse_xdf(xdf_path: str, device_ids: Optional[List[str]] = None) -> List[DeviceData]:
+def parse_xdf(xdf_path: str, device_ids: Optional[List[str]] = None) -> Tuple[List[DeviceData],Dict[str,Any]]:
     """
     Split an XDF file into device/stream-specific HDF5 files.
 
     :param xdf_path: The path to the XDF file to parse.
     :param device_ids: If provided, only parse files corresponding to the specified devices.
-    :returns: A structured representation of information extracted from the XDF file for each device.
+    :returns: A structured representation of information extracted from the XDF file for each device, and the file header to extract the timestamp from.
     """
-    data, _ = pyxdf.load_xdf(xdf_path, dejitter_timestamps=False)
+    data, file_header = pyxdf.load_xdf(xdf_path, dejitter_timestamps=False)
 
     # Find marker stream to associate with each device
     marker_streams = [d for d in data if d["info"]["name"] == ["Marker"]]
@@ -297,4 +297,5 @@ def parse_xdf(xdf_path: str, device_ids: Optional[List[str]] = None) -> List[Dev
             hdf5_path=_make_hdf5_path(xdf_path, device_id, sensor_ids),
         ))
 
-    return results
+    #returning the file header as well for the datetime information from the xdf file 
+    return results,file_header
