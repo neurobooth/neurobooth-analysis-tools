@@ -212,6 +212,7 @@ def main(
 
     tunnel = None
     db_conn = None
+    log_file=None
     try:
         # Establish SSH tunnel if required
         if ssh_tunnel:
@@ -259,6 +260,7 @@ def main(
             task_map_file=task_map_file,
             corrections_path=correction_spec)
 
+        log_file=open(os.path.join(log_file_dir,f"resplit_run_{datetime.datetime.now().strftime('%Y-%m-%d_%Hh-%Mm-%Ss')}.log"),"w")
         batch_size = 10 # Process in batches to log incrementally
         for i, batch_files in enumerate(chunk_list(xdf_files, batch_size), 1):
             print(f"\n--- Processing batch {i} of {len(batch_files)} files ---")
@@ -270,6 +272,18 @@ def main(
                 max_workers=max_workers,
                 desc="Splitting XDF files"
             )
+
+            for xdf_path,result in zip(batch_files,results):
+                if result is None:
+                    log_file.write(f"FAILED: {xdf_path}\n")
+                else:
+                    xdf_info,dev_data,rec_dt=result
+                    extracted=[d["device_id"] for d in dev_data]
+                    expected=dev_data[0]["expected_devices"] if dev_data else []
+                    missing=[d for d in expected if d not in extracted]
+                    log_file.write(f"OK: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
+            log_file.flush()        
+
             # Filter out failed/empty results
             results = [r for r in results if r is not None and r[1]] 
 
@@ -292,6 +306,8 @@ def main(
         traceback.print_exc()
 
     finally:
+        if log_file:
+            log_file.close()
         # Clean up resources
         if db_conn:
             db_conn.close()

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 import resplit_utils as nb_utils
 
 #change this path if needed
-PROCESSED_DATA_DIR = "/space/billnted/4/neurobooth/processed_data/"
+PROCESSED_DATA_DIR = "/space/billnted/5/neurobooth/processed_data/"
 
 class SplitException(Exception):
     """For generic errors that occur when splitting an XDF file."""
@@ -557,7 +557,7 @@ def split(
         device_ids = device_id_from_yaml(task_map_file, xdf_info.task_id)
     else:
         device_ids = database_conn.get_device_ids(xdf_info)
-        print(f"Got from the database here {device_ids}")
+        # print(f"Got from the database here {device_ids}") #debug statement commented out
 
     if not device_ids:
         raise SplitException(f'Could not locate task ID {xdf_info.task_id} for session {xdf_info.subject_id}_{xdf_info.date.isoformat()}.')
@@ -582,6 +582,7 @@ def split(
     for dev in device_data:
         timestamps = dev.device_data.get("time_stamps", [])
         slim_data.append({
+            "expected_devices":device_ids,
             "device_id": dev.device_id,
             "sensor_ids": dev.sensor_ids,
             "hdf5_path": dev.hdf5_path,

@@ -15,7 +15,7 @@ Neurobooth-OS installation.
 
 import json
 import time
-from typing import NamedTuple, List, Any, Optional
+from typing import NamedTuple, List, Any, Optional, Dict
 import numpy as np
 import pylsl
 import pyxdf
