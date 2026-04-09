@@ -7,7 +7,7 @@ larger script.
 Example (running on neurodoor no need to provide the ssh-tunnel flag, if running from other servers, specify ssh-tunnel):
 conda activate neurobooth-os
 cd /space/neo/3/neurobooth/applications/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf
-python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json --task-device-map /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/split_task_device_map.yml --hdf5-corrections /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/hdf5_corrections.yml --ssh-tunnel
+python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json --task-device-map /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/split_task_device_map.yml --hdf5-corrections /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/hdf5_corrections.yml --ssh-tunnel --ssh-key ~/.ssh/id_rsa
 
 Since the split can take a very long time, it may be wise to run this in the background with nohup.
 
@@ -100,7 +100,7 @@ def split_one_file(
     ssh_tunnel: bool,
     task_map_file: str,
     corrections_path: str
-) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]]]]:
+) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]],Optional[str]]]:
     """
     Worker function to split a single XDF file (designed for parallel execution).
     
@@ -141,13 +141,13 @@ def split_one_file(
         correction_spec = xdf.HDF5CorrectionSpec.load(corrections_path)
         
         # Split the XDF file
-        xdf_info, dev_data = xdf.split(
+        xdf_info, dev_data, recording_datetime = xdf.split(
             xdf_path=xdf_path,
             database_conn=db_conn,
             task_map_file=task_map_file,
             corrections=correction_spec,
         )
-        return xdf_info, dev_data
+        return xdf_info, dev_data, recording_datetime
     
     except Exception as e:
         # Log the error and return None to indicate failure
@@ -166,6 +166,7 @@ def main(
         correction_spec: str,
         log_file_dir: str,
         max_workers: int,
+        ssh_key: str,
 ) -> None:
     """
     Main function to discover and process all XDF files in parallel.
@@ -212,6 +213,7 @@ def main(
 
     tunnel = None
     db_conn = None
+    log_file=None
     try:
         # Establish SSH tunnel if required
         if ssh_tunnel:
@@ -222,8 +224,8 @@ def main(
             tunnel = SSHTunnelForwarder(
                 (remote_host, 22),
                 ssh_username=remote_user,
-                ssh_pkey=os.path.expanduser(f"~/.ssh/id_rsa"),
-                remote_bind_address=('neurodoor.nmr.mgh.harvard.edu', 5432),
+                ssh_pkey=ssh_key,
+                remote_bind_address=(remote_host, 5432),
                 local_bind_address=("localhost", 6543)
             )
             print(f"Starting SSH tunnel...")
@@ -259,6 +261,7 @@ def main(
             task_map_file=task_map_file,
             corrections_path=correction_spec)
 
+        log_file=open(os.path.join(log_file_dir,f"resplit_run_{datetime.datetime.now().strftime('%Y-%m-%d_%Hh-%Mm-%Ss')}.log"),"w")
         batch_size = 10 # Process in batches to log incrementally
         for i, batch_files in enumerate(chunk_list(xdf_files, batch_size), 1):
             print(f"\n--- Processing batch {i} of {len(batch_files)} files ---")
@@ -270,6 +273,21 @@ def main(
                 max_workers=max_workers,
                 desc="Splitting XDF files"
             )
+
+            for xdf_path,result in zip(batch_files,results):
+                if result is None:
+                    log_file.write(f"FAILED: {xdf_path}\n")
+                else:
+                    xdf_info,dev_data,rec_dt=result
+                    extracted=[d["device_id"] for d in dev_data]
+                    expected=dev_data[0]["expected_devices"] if dev_data else []
+                    missing=[d for d in expected if d not in extracted]
+                    if expected==[]:
+                        log_file.write(f"NODATA: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
+                    else:
+                        log_file.write(f"OK: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
+            log_file.flush()        
+
             # Filter out failed/empty results
             results = [r for r in results if r is not None and r[1]] 
 
@@ -279,9 +297,9 @@ def main(
             
             # Log results to database
             print(f"Successfully split {len(results)} files. Logging to database...")
-            for (xdf_info, device_data) in results:
+            for (xdf_info, device_data,recording_datetime) in results:
                 try:
-                    db_conn.log_split(xdf_info, device_data)
+                    db_conn.log_split(xdf_info, device_data,recording_datetime)
                 except Exception as e:
                     print(f"[ERROR] Database log failed for {xdf_info.path}: {e}")
                     traceback.print_exc()
@@ -292,6 +310,8 @@ def main(
         traceback.print_exc()
 
     finally:
+        if log_file:
+            log_file.close()
         # Clean up resources
         if db_conn:
             db_conn.close()
@@ -356,6 +376,12 @@ def parse_arguments() -> Dict[str, Any]:
         help="The number of parallel processes to run."
     )
 
+    parser.add_argument(
+        '--ssh-key',
+        type=str,
+        default=os.path.expanduser("~/.ssh/id_rsa"),
+        help="Path to SSH private key for tunneling. Defaults to ~/.ssh/id_rsa.",
+    )
     args = parser.parse_args()
     return {
         'config_path': os.path.abspath(args.config_path),
@@ -364,6 +390,7 @@ def parse_arguments() -> Dict[str, Any]:
         'correction_spec': os.path.abspath(args.hdf5_corrections),
         'log_file_dir': os.path.abspath(args.log_file_dir),
         'max_workers': args.max_workers if args.max_workers > 0 else 1,
+        'ssh_key': os.path.expanduser(args.ssh_key) if args.ssh_key else os.path.expanduser("~/.ssh/id_rsa")
     }
 
 
