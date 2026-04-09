@@ -7,7 +7,7 @@ larger script.
 Example (running on neurodoor no need to provide the ssh-tunnel flag, if running from other servers, specify ssh-tunnel):
 conda activate neurobooth-os
 cd /space/neo/3/neurobooth/applications/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf
-python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json --task-device-map /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/split_task_device_map.yml --hdf5-corrections /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/hdf5_corrections.yml --ssh-tunnel
+python resplit.py --config-path /space/drwho/3/neurobooth/applications/config/neurobooth_os_config.json --task-device-map /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/split_task_device_map.yml --hdf5-corrections /space/billnted/7/analyses/dk028/other_work/neurobooth-analysis-tools-dev/neurobooth-analysis-tools/neurobooth_analysis_tools/xdf/hdf5_corrections.yml --ssh-tunnel --ssh-key ~/.ssh/id_rsa
 
 Since the split can take a very long time, it may be wise to run this in the background with nohup.
 
@@ -166,6 +166,7 @@ def main(
         correction_spec: str,
         log_file_dir: str,
         max_workers: int,
+        ssh_key: str,
 ) -> None:
     """
     Main function to discover and process all XDF files in parallel.
@@ -223,8 +224,8 @@ def main(
             tunnel = SSHTunnelForwarder(
                 (remote_host, 22),
                 ssh_username=remote_user,
-                ssh_pkey=os.path.expanduser(f"~/.ssh/id_rsa"),
-                remote_bind_address=('neurodoor.nmr.mgh.harvard.edu', 5432),
+                ssh_pkey=ssh_key,
+                remote_bind_address=(remote_host, 5432),
                 local_bind_address=("localhost", 6543)
             )
             print(f"Starting SSH tunnel...")
@@ -281,7 +282,10 @@ def main(
                     extracted=[d["device_id"] for d in dev_data]
                     expected=dev_data[0]["expected_devices"] if dev_data else []
                     missing=[d for d in expected if d not in extracted]
-                    log_file.write(f"OK: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
+                    if expected==[]:
+                        log_file.write(f"NODATA: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
+                    else:
+                        log_file.write(f"OK: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
             log_file.flush()        
 
             # Filter out failed/empty results
@@ -372,6 +376,12 @@ def parse_arguments() -> Dict[str, Any]:
         help="The number of parallel processes to run."
     )
 
+    parser.add_argument(
+        '--ssh-key',
+        type=str,
+        default=os.path.expanduser("~/.ssh/id_rsa"),
+        help="Path to SSH private key for tunneling. Defaults to ~/.ssh/id_rsa.",
+    )
     args = parser.parse_args()
     return {
         'config_path': os.path.abspath(args.config_path),
@@ -380,6 +390,7 @@ def parse_arguments() -> Dict[str, Any]:
         'correction_spec': os.path.abspath(args.hdf5_corrections),
         'log_file_dir': os.path.abspath(args.log_file_dir),
         'max_workers': args.max_workers if args.max_workers > 0 else 1,
+        'ssh_key': os.path.expanduser(args.ssh_key) if args.ssh_key else os.path.expanduser("~/.ssh/id_rsa")
     }
 
 
