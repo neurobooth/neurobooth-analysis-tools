@@ -23,6 +23,7 @@ import os
 import argparse
 import datetime
 import traceback
+import statistics
 import time
 import sys
 from itertools import chain
@@ -100,28 +101,25 @@ def split_one_file(
     ssh_tunnel: bool,
     task_map_file: str,
     corrections_path: str
-) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]],Optional[str]]]:
+) -> Optional[Tuple[xdf.XDFInfo, List[Dict[str, Any]], float]]:
     """
     Worker function to split a single XDF file (designed for parallel execution).
-    
+
     This function is called by process_map for each XDF file. It:
     1. Parses the XDF filename
     2. Determines if task mapping file should be used (based on date)
     3. Establishes database connection
     4. Calls the split function
     5. Returns results for database logging
-    
     Args:
         xdf_path (str): Full path to the XDF file to process.
         config_path (str): Path to the database configuration JSON file.
         ssh_tunnel (bool): Whether SSH tunneling is required (currently overridden).
         task_map_file (str): Path to YAML task-device mapping file.
         corrections_path (str): Path to YAML corrections specification file.
-        
     Returns:
-        Tuple[XDFInfo, List[Dict]]: XDF metadata and slim device data for logging.
-        or None if the processing failed
-
+        Tuple[XDFInfo, List[Dict], float]: XDF metadata, slim device data, and the
+        wall-clock-to-LSL offset (seconds), or None if processing failed.
     """
     db_conn = None
 
@@ -131,23 +129,21 @@ def split_one_file(
     # Use task map for old files, database query for newer ones
     task_map_file = None if xdf_info.date > LOG_DEVICE_PARAM_DATE else task_map_file
 
-    #pass a host and port override to connect through it.
-    
     try:
         # Establish database connection
         db_conn = xdf.DatabaseConnection(config_path, tunnel=False, override_host='localhost', override_port=6543)
-        
+
         # Load correction specifications
         correction_spec = xdf.HDF5CorrectionSpec.load(corrections_path)
-        
+
         # Split the XDF file
-        xdf_info, dev_data, recording_datetime = xdf.split(
+        xdf_info, dev_data, time_offset = xdf.split(
             xdf_path=xdf_path,
             database_conn=db_conn,
             task_map_file=task_map_file,
             corrections=correction_spec,
         )
-        return xdf_info, dev_data, recording_datetime
+        return xdf_info, dev_data, time_offset
     
     except Exception as e:
         # Log the error and return None to indicate failure
@@ -274,32 +270,33 @@ def main(
                 desc="Splitting XDF files"
             )
 
-            for xdf_path,result in zip(batch_files,results):
+            for xdf_path, result in zip(batch_files, results):
                 if result is None:
                     log_file.write(f"FAILED: {xdf_path}\n")
                 else:
-                    xdf_info,dev_data,rec_dt=result
-                    extracted=[d["device_id"] for d in dev_data]
-                    expected=dev_data[0]["expected_devices"] if dev_data else []
-                    missing=[d for d in expected if d not in extracted]
-                    if expected==[]:
-                        log_file.write(f"NODATA: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
-                    else:
-                        log_file.write(f"OK: {xdf_path} | expected: {expected} | extracted: {extracted} | missing:{missing}\n")
-            log_file.flush()        
+                    xdf_info, dev_data, time_offset = result
+                    extracted = [d["device_id"] for d in dev_data]
+                    expected = dev_data[0]["expected_devices"] if dev_data else []
+                    missing = [d for d in expected if d not in extracted]
+                    status = "NODATA" if expected == [] else "OK"
+                    log_file.write(
+                        f"{status}: {xdf_path} | time_offset: {time_offset:.4f}s | "
+                        f"expected: {expected} | extracted: {extracted} | missing: {missing}\n"
+                    )
+            log_file.flush()
 
             # Filter out failed/empty results
-            results = [r for r in results if r is not None and r[1]] 
+            results = [r for r in results if r is not None and r[1]]
 
             if not results:
                 print("No files were successfully processed in this batch.")
                 continue
-            
+
             # Log results to database
             print(f"Successfully split {len(results)} files. Logging to database...")
-            for (xdf_info, device_data,recording_datetime) in results:
+            for (xdf_info, device_data, time_offset) in results:
                 try:
-                    db_conn.log_split(xdf_info, device_data,recording_datetime)
+                    db_conn.log_split(xdf_info, device_data, time_offset)
                 except Exception as e:
                     print(f"[ERROR] Database log failed for {xdf_info.path}: {e}")
                     traceback.print_exc()
