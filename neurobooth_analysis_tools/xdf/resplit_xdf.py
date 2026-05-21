@@ -8,15 +8,17 @@ import re
 import argparse
 import datetime
 import importlib
+import statistics
 import numpy as np
 from typing import NamedTuple, List, Dict, Optional, Any, Callable, ClassVar, Tuple
 import h5io
 import yaml
 import psycopg2 as pg
 from pydantic import BaseModel
-
-
 import resplit_utils as nb_utils
+
+#change this path if needed
+PROCESSED_DATA_DIR = "/space/billnted/5/neurobooth/processed_data/"
 
 class SplitException(Exception):
     """For generic errors that occur when splitting an XDF file."""
@@ -315,13 +317,11 @@ class DatabaseConnection:
             cursor.execute(DatabaseConnection.DEVICE_ID_QUERY, query_params)
             return [row[0] for row in cursor.fetchall()]
     
-    def log_split(self, xdf_info: XDFInfo, device_data: List[Dict[str, Any]]) -> None:
+    def log_split(self, xdf_info: XDFInfo, device_data: List[Dict[str, Any]], time_offset: float) -> None:
         """
         Log HDF5 file creation to the database (using slim dictionary format).
-        
         Creates entries in the log_split table for each sensor, recording information
         about the extracted HDF5 files, timestamps, and associated video files.
-        
         Args:
             xdf_info (XDFInfo): Information about the source XDF file.
             device_data (List[Dict[str, Any]]): List of dictionaries containing:
@@ -330,21 +330,24 @@ class DatabaseConnection:
                 - hdf5_path: Path to HDF5 file
                 - timestamps: Array of LSL timestamps
                 - video_files: List of associated video filenames
-                
+            time_offset (float): Wall-clock-to-LSL offset in seconds, derived from the
+                marker messages (or filename fallback). Applied as
+                wall_time = lsl_timestamp + time_offset.
         Note:
             This version uses a "slim" dictionary format to avoid passing large
             data structures. The actual time-series data is not included, only
             metadata and timestamps.
         """
+        devices_with_timestamps = [d for d in device_data if len(d["timestamps"]) > 0]
+        if not devices_with_timestamps:
+            return
+
         with self.connection.cursor() as cursor:
             for device in device_data: # 'device' is now a dictionary
-                
                 #Use the timestamps directly from the dictionary
                 timestamps = device["timestamps"]
                 if len(timestamps) < 2:
                     continue
-
-                time_offset = nb_utils.compute_clocks_diff()
                 start_time = datetime.datetime.fromtimestamp(timestamps[0] + time_offset).strftime("%Y-%m-%d %H:%M:%S")
                 end_time = datetime.datetime.fromtimestamp(timestamps[-1] + time_offset).strftime("%Y-%m-%d %H:%M:%S")
                 temporal_resolution = 1 / np.median(np.diff(timestamps))
@@ -376,7 +379,7 @@ class DatabaseConnection:
                         'end_time': end_time,
                         'device_id': device_id,
                         'sensor_id': sensor_id,
-                        'hdf5_file_path': f'{session_folder}/{hdf5_file}',
+                        'hdf5_file_path': os.path.join(PROCESSED_DATA_DIR, session_folder, hdf5_file),
                         'xdf_path': xdf_info.xdf_pathd,
                         'sensor_file_paths': sensor_file_paths,
                     }
@@ -439,7 +442,7 @@ def _remake_hdf5_path(xdf_path: str, device_id: str, sensor_ids: List[str]) -> s
     """
     sensor_list = "-".join(sensor_ids)
     head, _ = os.path.splitext(xdf_path)
-    new_path = "/space/billnted/4/neurobooth/processed_data/"
+    new_path = PROCESSED_DATA_DIR
     base_folder = os.path.basename(os.path.dirname(head))
     directory_to_create = os.path.join(new_path, base_folder)
     new_file_path = os.path.join(directory_to_create, os.path.basename(head))
@@ -499,10 +502,9 @@ def split(
         database_conn: DatabaseConnection,
         task_map_file: Optional[str] = None,
         corrections: Optional[HDF5CorrectionSpec] = None,
-) -> Tuple[XDFInfo, List[Dict[str, Any]]]:
+) -> Tuple[XDFInfo, List[Dict[str, Any]], float]:
     """
     Split a single XDF file into device-specific HDF5 files.
-    
     This is the main entry point for the splitting process. It:
     1. Parses the XDF filename to extract metadata
     2. Determines which devices to extract (from database or YAML)
@@ -510,16 +512,14 @@ def split(
     4. Applies corrections to legacy data
     5. Writes device-specific HDF5 files
     6. Returns slim data for database logging
-    
     Args:
         xdf_path (str): Full path to the XDF file to split.
         database_conn (DatabaseConnection): Active database connection for queries.
         task_map_file (Optional[str]): Path to YAML file with task->device mapping.
                                        If provided, uses this instead of database query.
         corrections (Optional[HDF5CorrectionSpec]): Correction specification to apply.
-        
     Returns:
-        Tuple[XDFInfo, List[Dict[str, Any]]]: A tuple containing:
+        Tuple[XDFInfo, List[Dict[str, Any]], float]: A tuple containing:
             - XDFInfo: Parsed metadata from the filename
             - List of slim device dictionaries for database logging containing:
                 - device_id: Device identifier
@@ -527,7 +527,8 @@ def split(
                 - hdf5_path: Path to written HDF5 file
                 - timestamps: Array of timestamps
                 - video_files: List of video filenames
-        
+            - time_offset: wall-clock-to-LSL offset (seconds), derived from marker
+              messages or filename fallback.
     Raises:
         SplitException: If device IDs cannot be determined or XDF parsing fails.
     """
@@ -539,28 +540,45 @@ def split(
         device_ids = device_id_from_yaml(task_map_file, xdf_info.task_id)
     else:
         device_ids = database_conn.get_device_ids(xdf_info)
-        print(f"Got from the database here {device_ids}")
 
     if not device_ids:
         raise SplitException(f'Could not locate task ID {xdf_info.task_id} for session {xdf_info.subject_id}_{xdf_info.date.isoformat()}.')
 
     # Parse XDF file
     try:
-        device_data = nb_utils.parse_xdf(xdf_path, device_ids)
+        device_data, marker_time_offset = nb_utils.parse_xdf(xdf_path, device_ids)
     except Exception as e:
         print(f"[ERROR] Error parsing XDF file {xdf_path}: {e}. Skipping file.")
-        return xdf_info, []
+        return xdf_info, [], 0.0
     # Apply corrections to legacy data
     if corrections is not None:
         device_data = [corrections.correct_device(dev) for dev in device_data]
     # Write HDF5 files
     device_data = rewrite_device_hdf5(xdf_path, device_data)
-    
-    #Slim down data for returning,thsi isto avoid passing large data structures
+
+    # Pick the wall-clock anchor: marker-derived if available, else filename.
+    if marker_time_offset is not None:
+        time_offset = marker_time_offset
+    else:
+        print(f"[WARNING] No parseable wall-clock timestamps in marker stream for {xdf_path}. "
+              f"Falling back to filename anchor.")
+        match = re.match(r'(\d+)_(\d{4}-\d{2}-\d{2})_(\d{2})h-(\d{2})m-(\d{2})s_', xdf_info.name)
+        if match is None:
+            raise SplitException(f'Cannot derive fallback offset for {xdf_info.name}')
+        _, date_str, hh, mm, ss = match.groups()
+        filename_dt = datetime.datetime.strptime(
+            f"{date_str} {hh}:{mm}:{ss}", "%Y-%m-%d %H:%M:%S")
+        ts_first = [dev.device_data["time_stamps"][0]
+                    for dev in device_data
+                    if len(dev.device_data.get("time_stamps", [])) > 0]
+        time_offset = filename_dt.timestamp() - min(ts_first) if ts_first else 0.0
+
+    # Slim down data for returning, to avoid passing large data structures
     slim_data = []
     for dev in device_data:
         timestamps = dev.device_data.get("time_stamps", [])
         slim_data.append({
+            "expected_devices": device_ids,
             "device_id": dev.device_id,
             "sensor_ids": dev.sensor_ids,
             "hdf5_path": dev.hdf5_path,
@@ -568,7 +586,7 @@ def split(
             "video_files": dev.video_files,
         })
 
-    return xdf_info, slim_data
+    return xdf_info, slim_data, time_offset
 
 
 def parse_arguments() -> Dict[str, Any]:

@@ -15,7 +15,7 @@ Neurobooth-OS installation.
 
 import json
 import time
-from typing import NamedTuple, List, Any, Optional
+from typing import NamedTuple, List, Any, Optional, Dict
 import numpy as np
 import pylsl
 import pyxdf
@@ -228,16 +228,48 @@ def _make_hdf5_path(xdf_path: str, device_id: str, sensor_ids: List[str]) -> str
     sensor_list = "-".join(sensor_ids)
     head, _ = os.path.splitext(xdf_path)
     return f"{head}-{device_id}-{sensor_list}.hdf5"
-    
-def parse_xdf(xdf_path: str, device_ids: Optional[List[str]] = None) -> List[DeviceData]:
-    """
-    Split an XDF file into device/stream-specific HDF5 files.
 
-    :param xdf_path: The path to the XDF file to parse.
-    :param device_ids: If provided, only parse files corresponding to the specified devices.
-    :returns: A structured representation of information extracted from the XDF file for each device.
+
+# Trailing `_<unix_timestamp>` in marker messages, e.g. "Intructions_start_1776780326.0495"
+MARKER_WALL_TIME_PATTERN = re.compile(r"_(\d+\.\d+)$")
+
+#getting the offset for the start and end times
+def compute_marker_time_offset(marker_stream: Dict[str, Any]) -> Optional[float]:
     """
-    data, _ = pyxdf.load_xdf(xdf_path, dejitter_timestamps=False)
+    Derive the wall-clock-to-LSL offset from the marker stream.
+
+    Each marker message is `<event>_<state>_<unix_timestamp>`.after loading with
+    synchronize_clocks=True,the LSL timestamps are on the recorder's clock, so
+    median(wall - lsl) across all parseable markers is the same constant
+    compute_clocks_diff() would have returned on the recorder host at recording time.
+
+    marker_stream: The Marker stream dict from pyxdf.
+    returns: median(wall-lsl) in seconds, or None if no parseable pairs.
+    """
+    pairs = []
+    for lsl_ts, msg in zip(marker_stream["time_stamps"], marker_stream["time_series"]):
+        text = msg[0] if isinstance(msg, (list, tuple)) else msg
+        m = MARKER_WALL_TIME_PATTERN.search(str(text))
+        if m:
+            pairs.append((float(lsl_ts), float(m.group(1))))
+    if not pairs:
+        return None
+    offsets = np.array([w - l for l, w in pairs])
+    return float(np.median(offsets))
+
+
+def parse_xdf(xdf_path: str, device_ids: Optional[List[str]] = None) -> Tuple[List[DeviceData], Optional[float]]:
+    """
+    Parse an XDF file into per-device data structures and derive the wall-clock offset.
+
+    xdf_path: The path to the XDF file to parse.
+    device_ids: If provided, only parse streams corresponding to these devices.
+    returns: (device_data_list, time_offset)
+              - device_data_list: per-device structured info
+              - time_offset: median wall-clock-to-LSL offset derived from marker
+                messages, or None if no parseable wall-clock suffixes are present.
+    """
+    data, _ = pyxdf.load_xdf(xdf_path, dejitter_timestamps=False, synchronize_clocks=True)
 
     # Find marker stream to associate with each device
     marker_streams = [d for d in data if d["info"]["name"] == ["Marker"]]
@@ -297,4 +329,6 @@ def parse_xdf(xdf_path: str, device_ids: Optional[List[str]] = None) -> List[Dev
             hdf5_path=_make_hdf5_path(xdf_path, device_id, sensor_ids),
         ))
 
-    return results
+    #call the offset calculation method and return the offset
+    time_offset = compute_marker_time_offset(marker)
+    return results, time_offset
